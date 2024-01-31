@@ -26,12 +26,16 @@ fn panic(info: &PanicInfo) -> ! {
 }
 
 #[cfg(test)]
-#[panic_handler]
-fn panic(info: &PanicInfo) -> ! {
-    toast::test_panic_handler(info)
-}
+mod tests {
+    use core::panic::PanicInfo;
 
-#[test_case]
-fn trivial_assertion() {
-    assert_eq!(1, 1);
+    #[panic_handler]
+    fn panic(info: &PanicInfo) -> ! {
+        toast::test_panic_handler(info)
+    }
+
+    #[test_case]
+    fn trivial_assertion() {
+        assert_eq!(1, 1);
+    }
 }
