@@ -4,8 +4,5 @@ version = "0.1.0"
 edition = "2021"
 authors = ["Emma Plante"]
 
-[profile.dev]
-panic = "abort"
-
-[profile.release]
-panic = "abort"
+[dependencies]
+bootloader = "0.9.23"
