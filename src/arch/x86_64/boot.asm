@@ -9,22 +9,25 @@ start:
     ; 0. Move the stack pointer to the top of the stack
     mov esp, stack_top
 
-    ; 1. Make sure that the system supports necessary features
+    ; 1. Move Multiboot info pointer to edi
+    mov edi, ebx
+
+    ; 2. Make sure that the system supports necessary features
     call check_multiboot
     call check_cpuid
     call check_long_mode
 
-    ; 2. Create the page tables
+    ; 3. Create the page tables
     call create_page_tables
     call enable_paging
 
-    ; 3. Load the 64-bit GDT
+    ; 4. Load the 64-bit GDT
     lgdt [gdt64.pointer]
 
-    ; 4. Print OK to the screen
+    ; 5. Print OK to the screen
     mov dword [0xb8000], 0x2f4b2f4f ; print OK to screen
 
-    ; 5. Jump to the 64-bit boot subroutine
+    ; 6. Jump to the 64-bit boot subroutine
     jmp gdt64.code:long_mode_start
 
     hlt
@@ -175,5 +178,5 @@ p3_table:
 p2_table:
     resb 4096
 stack_bottom:
-    resb 64
+    resb 4096 * 4
 stack_top:

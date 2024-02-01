@@ -13,6 +13,7 @@ harness = false
 
 [dependencies]
 rlibc = "1.0"
+# multiboot2 = "0.1.0"
 volatile = "0.2.6"
 spin = "0.9.8"
 x86_64 = "0.14.2"
