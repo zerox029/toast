@@ -91,6 +91,7 @@ dependencies = [
 name = "toast"
 version = "0.1.0"
 dependencies = [
+ "bitflags 2.4.2",
  "lazy_static",
  "multiboot2",
  "rlibc",

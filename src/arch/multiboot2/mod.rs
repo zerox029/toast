@@ -1,5 +1,7 @@
 mod tags;
 
+const END_TAG_SIZE: u32 = 8;
+
 #[repr(C)]
 pub struct BootInformation {
     pub total_size: u32,
@@ -17,6 +19,12 @@ impl BootInformation {
         self.get_tag(tags::TagType::MemoryMap)
             .map(|tag| unsafe{ &*(tag as *const tags::Tag as *const tags::MemoryMap )})
     }
+
+    pub fn elf_symbols(&self) -> Option<&'static tags::ElfSymbols> {
+        self.get_tag(tags::TagType::ELFSymbols)
+            .map(|tag| unsafe{ &*(tag as *const tags::Tag as *const tags::ElfSymbols )})
+    }
+
     pub fn networking_information(&self) -> Option<&'static tags::NetworkingInformation> {
         self.get_tag(tags::TagType::NetworkingInformation)
             .map(|tag| unsafe{ &*(tag as *const tags::Tag as *const tags::NetworkingInformation )})
@@ -64,7 +72,7 @@ impl Iterator for TagIterator {
 
     fn next(&mut self) -> Option<&'static tags::Tag> {
         match unsafe{ &*self.current } {
-            &tags::Tag{ typ: tags::TagType::End, size: 8 } => None,
+            &tags::Tag{ typ: tags::TagType::End, size: END_TAG_SIZE } => None,
             tag => {
                 let mut tag_addr = self.current as usize;
                 tag_addr += tag.size as usize;
