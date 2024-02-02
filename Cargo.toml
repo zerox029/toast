@@ -13,6 +13,7 @@ harness = false
 
 [dependencies]
 rlibc = "1.0"
+multiboot2 = "0.12.0"
 volatile = "0.2.6"
 spin = "0.9.8"
 x86_64 = "0.14.2"
@@ -21,3 +22,7 @@ uart_16550 = "0.2.0"
 [dependencies.lazy_static]
 version = "1.0"
 features = ["spin_no_std"]
+
+[dependencies.bitflags]
+version = "0.4.0"
+features = ["no_std"]
