@@ -8,23 +8,37 @@
 extern crate rlibc;
 
 use core::panic::PanicInfo;
+use crate::memory::FrameAllocator;
 
 pub mod vga_buffer;
 pub mod arch;
+pub mod memory;
 
 #[no_mangle]
 pub extern fn _main(multiboot_information_address: usize) {
-    print_memory_areas(multiboot_information_address);
-
     let boot_info = unsafe{ arch::multiboot2::load(multiboot_information_address) };
     let memory_map = boot_info.memory_map().expect("Memory map tag required");
     let elf_symbols = boot_info.elf_symbols().expect("Elf symbols tag required");
 
     let kernel_start = elf_symbols.section_headers().map(|s| s.start_address()).min().unwrap();
-    let kernel_start = elf_symbols.section_headers().map(|s| s.end_address()).min().unwrap();
+    let kernel_end = elf_symbols.section_headers().map(|s| s.end_address()).min().unwrap();
 
     let multiboot_start = multiboot_information_address;
     let multiboot_end = multiboot_start + (boot_info.total_size as usize);
+
+    let mut frame_allocator = memory::page_frame_allocator::PageFrameAllocator::new(kernel_start,
+                                                                                    kernel_end,
+                                                                                    multiboot_start,
+                                                                                    multiboot_end,
+                                                                                    memory_map.entries());
+
+
+    for i in 0.. {
+        if let None = frame_allocator.allocate_frame() {
+            println!("allocated {} frames", i);
+            break;
+        }
+    }
 }
 
 fn print_memory_areas(multiboot_information_address: usize) {
