@@ -11,10 +11,7 @@ extern crate multiboot2;
 use core::panic::PanicInfo;
 
 pub mod vga_buffer;
-mod memory;
-mod arch;
-
-const MULTIBOOT_MAGIC_NUMBER: u32 = 0x1BADB002;
+pub mod arch;
 
 #[no_mangle]
 pub extern fn _main(multiboot_information_address: usize) {
