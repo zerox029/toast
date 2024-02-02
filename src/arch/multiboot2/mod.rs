@@ -1,4 +1,4 @@
-mod tags;
+mod structures;
 
 const END_TAG_SIZE: u32 = 8;
 
@@ -6,7 +6,7 @@ const END_TAG_SIZE: u32 = 8;
 pub struct BootInformation {
     pub total_size: u32,
     pub reserved: u32,
-    pub first_tag: tags::Tag,
+    pub first_tag: structures::Tag,
 }
 
 pub unsafe fn load(multiboot_information_address: usize) -> &'static BootInformation {
@@ -15,69 +15,69 @@ pub unsafe fn load(multiboot_information_address: usize) -> &'static BootInforma
 }
 
 impl BootInformation {
-    pub fn memory_map(&self) -> Option<&'static tags::MemoryMap> {
-        self.get_tag(tags::TagType::MemoryMap)
-            .map(|tag| unsafe{ &*(tag as *const tags::Tag as *const tags::MemoryMap )})
+    pub fn memory_map(&self) -> Option<&'static structures::MemoryMap> {
+        self.get_tag(structures::TagType::MemoryMap)
+            .map(|tag| unsafe{ &*(tag as *const structures::Tag as *const structures::MemoryMap )})
     }
 
-    pub fn elf_symbols(&self) -> Option<&'static tags::ElfSymbols> {
-        self.get_tag(tags::TagType::ELFSymbols)
-            .map(|tag| unsafe{ &*(tag as *const tags::Tag as *const tags::ElfSymbols )})
+    pub fn elf_symbols(&self) -> Option<&'static structures::ElfSymbols> {
+        self.get_tag(structures::TagType::ELFSymbols)
+            .map(|tag| unsafe{ &*(tag as *const structures::Tag as *const structures::ElfSymbols )})
     }
 
-    pub fn networking_information(&self) -> Option<&'static tags::NetworkingInformation> {
-        self.get_tag(tags::TagType::NetworkingInformation)
-            .map(|tag| unsafe{ &*(tag as *const tags::Tag as *const tags::NetworkingInformation )})
+    pub fn networking_information(&self) -> Option<&'static structures::NetworkingInformation> {
+        self.get_tag(structures::TagType::NetworkingInformation)
+            .map(|tag| unsafe{ &*(tag as *const structures::Tag as *const structures::NetworkingInformation )})
     }
 
-    pub fn efi_memory_map(&self) -> Option<&'static tags::EFIMemoryMap> {
-        self.get_tag(tags::TagType::EFIMemoryMap)
-            .map(|tag| unsafe{ &*(tag as *const tags::Tag as *const tags::EFIMemoryMap )})
+    pub fn efi_memory_map(&self) -> Option<&'static structures::EFIMemoryMap> {
+        self.get_tag(structures::TagType::EFIMemoryMap)
+            .map(|tag| unsafe{ &*(tag as *const structures::Tag as *const structures::EFIMemoryMap )})
     }
 
-    pub fn efi_boot_services_not_terminated(&self) -> Option<&'static tags::EFIBootServicesNotTerminated> {
-        self.get_tag(tags::TagType::EFIBootServicesNotTerminated)
-            .map(|tag| unsafe{ &*(tag as *const tags::Tag as *const tags::EFIBootServicesNotTerminated )})
+    pub fn efi_boot_services_not_terminated(&self) -> Option<&'static structures::EFIBootServicesNotTerminated> {
+        self.get_tag(structures::TagType::EFIBootServicesNotTerminated)
+            .map(|tag| unsafe{ &*(tag as *const structures::Tag as *const structures::EFIBootServicesNotTerminated )})
     }
-    pub fn efi_32bit_image_handle_pointer(&self) -> Option<&'static tags::EFI32BitImageHandlePointer> {
-        self.get_tag(tags::TagType::EFI32BitImageHandlePointer)
-            .map(|tag| unsafe{ &*(tag as *const tags::Tag as *const tags::EFI32BitImageHandlePointer )})
-    }
-
-    pub fn efi_64bit_image_handle_pointer(&self) -> Option<&'static tags::EFI64BitImageHandlePointer> {
-        self.get_tag(tags::TagType::EFI64BitImageHandlePointer)
-            .map(|tag| unsafe{ &*(tag as *const tags::Tag as *const tags::EFI64BitImageHandlePointer )})
+    pub fn efi_32bit_image_handle_pointer(&self) -> Option<&'static structures::EFI32BitImageHandlePointer> {
+        self.get_tag(structures::TagType::EFI32BitImageHandlePointer)
+            .map(|tag| unsafe{ &*(tag as *const structures::Tag as *const structures::EFI32BitImageHandlePointer )})
     }
 
-    pub fn image_load_base_physical_address(&self) -> Option<&'static tags::ImageLoadBasePhysicalAddress> {
-        self.get_tag(tags::TagType::ImgLoadBasePhysicalAddress)
-            .map(|tag| unsafe{ &*(tag as *const tags::Tag as *const tags::ImageLoadBasePhysicalAddress )})
+    pub fn efi_64bit_image_handle_pointer(&self) -> Option<&'static structures::EFI64BitImageHandlePointer> {
+        self.get_tag(structures::TagType::EFI64BitImageHandlePointer)
+            .map(|tag| unsafe{ &*(tag as *const structures::Tag as *const structures::EFI64BitImageHandlePointer )})
+    }
+
+    pub fn image_load_base_physical_address(&self) -> Option<&'static structures::ImageLoadBasePhysicalAddress> {
+        self.get_tag(structures::TagType::ImgLoadBasePhysicalAddress)
+            .map(|tag| unsafe{ &*(tag as *const structures::Tag as *const structures::ImageLoadBasePhysicalAddress )})
     }
 
     pub fn tags(&self) -> TagIterator {
         TagIterator{ current: &self.first_tag as *const _ }
     }
 
-    pub fn get_tag(&self, typ: tags::TagType) -> Option<&'static tags::Tag> {
+    pub fn get_tag(&self, typ: structures::TagType) -> Option<&'static structures::Tag> {
         self.tags().find(|tag| tag.typ == typ)
     }
 }
 
 pub struct TagIterator {
-    current: *const tags::Tag,
+    current: *const structures::Tag,
 }
 
 impl Iterator for TagIterator {
-    type Item = &'static tags::Tag;
+    type Item = &'static structures::Tag;
 
-    fn next(&mut self) -> Option<&'static tags::Tag> {
+    fn next(&mut self) -> Option<&'static structures::Tag> {
         match unsafe{ &*self.current } {
-            &tags::Tag{ typ: tags::TagType::End, size: END_TAG_SIZE } => None,
+            &structures::Tag{ typ: structures::TagType::End, size: END_TAG_SIZE } => None,
             tag => {
                 let mut tag_addr = self.current as usize;
                 tag_addr += tag.size as usize;
                 tag_addr = ((tag_addr - 1) & !0x7) + 0x8; // 8-bytes alignment
-                self.current = tag_addr as *const tags::Tag;
+                self.current = tag_addr as *const structures::Tag;
 
                 Some(tag)
             }
