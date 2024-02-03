@@ -8,7 +8,6 @@
 extern crate rlibc;
 
 use core::panic::PanicInfo;
-use crate::memory::FrameAllocator;
 
 pub mod vga_buffer;
 pub mod arch;
@@ -32,13 +31,7 @@ pub extern fn _main(multiboot_information_address: usize) {
                                                                                     multiboot_end,
                                                                                     memory_map.entries());
 
-
-    for i in 0.. {
-        if let None = frame_allocator.allocate_frame() {
-            println!("allocated {} frames", i);
-            break;
-        }
-    }
+    memory::test_paging(&mut frame_allocator);
 }
 
 fn print_memory_areas(multiboot_information_address: usize) {
