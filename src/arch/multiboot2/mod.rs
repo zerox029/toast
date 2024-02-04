@@ -15,6 +15,14 @@ pub unsafe fn load(multiboot_information_address: usize) -> &'static BootInforma
 }
 
 impl BootInformation {
+    pub fn start_address(&self) -> usize {
+        self as *const _ as usize
+    }
+
+    pub fn end_address(&self) -> usize {
+        self.start_address() + self.total_size as usize
+    }
+
     pub fn memory_map(&self) -> Option<&'static structures::MemoryMap> {
         self.get_tag(structures::TagType::MemoryMap)
             .map(|tag| unsafe{ &*(tag as *const structures::Tag as *const structures::MemoryMap )})

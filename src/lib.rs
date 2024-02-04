@@ -8,6 +8,9 @@
 extern crate rlibc;
 
 use core::panic::PanicInfo;
+use x86_64::registers::model_specific::Efer;
+use x86_64::registers::control::{Cr0, Cr0Flags, EferFlags};
+use crate::memory::FrameAllocator;
 
 pub mod vga_buffer;
 pub mod arch;
@@ -15,6 +18,8 @@ pub mod memory;
 
 #[no_mangle]
 pub extern fn _main(multiboot_information_address: usize) {
+    vga_buffer::clear_screen();
+
     let boot_info = unsafe{ arch::multiboot2::load(multiboot_information_address) };
     let memory_map = boot_info.memory_map().expect("Memory map tag required");
     let elf_symbols = boot_info.elf_symbols().expect("Elf symbols tag required");
@@ -25,13 +30,23 @@ pub extern fn _main(multiboot_information_address: usize) {
     let multiboot_start = multiboot_information_address;
     let multiboot_end = multiboot_start + (boot_info.total_size as usize);
 
+
     let mut frame_allocator = memory::page_frame_allocator::PageFrameAllocator::new(kernel_start,
                                                                                     kernel_end,
                                                                                     multiboot_start,
                                                                                     multiboot_end,
                                                                                     memory_map.entries());
 
-    memory::test_paging(&mut frame_allocator);
+    unsafe {
+        Efer::write(EferFlags::NO_EXECUTE_ENABLE);
+        Cr0::write(Cr0::read() | Cr0Flags::WRITE_PROTECT);
+    }
+
+    memory::remap_kernel(&mut frame_allocator, boot_info);
+    frame_allocator.allocate_frame();
+    println!("No crash");
+
+    loop {}
 }
 
 fn print_memory_areas(multiboot_information_address: usize) {
