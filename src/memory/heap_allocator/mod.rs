@@ -48,9 +48,7 @@ pub fn init_heap<A>(mapper: &mut Mapper, frame_allocator: &mut A) where A: Frame
         let frame = frame_allocator.allocate_frame().expect("Frame allocation failed");
         let flags = EntryFlags::PRESENT | EntryFlags::WRITABLE;
 
-        unsafe {
-            mapper.map_to(page, frame, flags, frame_allocator)
-        };
+        mapper.map_to(page, frame, flags, frame_allocator)
     }
 
     unsafe {

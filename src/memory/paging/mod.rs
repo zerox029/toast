@@ -137,8 +137,6 @@ impl ActivePageTable {
             p4_frame: Frame::containing_address(unsafe {
                 let value: usize;
 
-                let value2 = x86_64::registers::control::Cr3::read().0.start_address().as_u64();
-
                 asm!("mov {}, cr3", out(reg) value, options(nomem, nostack, preserves_flags));
 
                 value
@@ -146,8 +144,6 @@ impl ActivePageTable {
         };
 
         unsafe {
-            let efer = x86_64::registers::model_specific::Efer::read_raw();
-            let efer_flags =  x86_64::registers::model_specific::Efer::read();
             asm!("mov cr3, {}", in(reg) new_table.p4_frame.start_address() as u64);
         }
 

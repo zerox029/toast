@@ -13,7 +13,6 @@ extern crate alloc;
 extern crate rlibc;
 
 use core::panic::PanicInfo;
-use alloc::boxed::Box;
 use x86_64::registers::model_specific::Efer;
 use x86_64::registers::control::{Cr0, Cr0Flags, EferFlags};
 use crate::interrupts::init_interrupts;
@@ -28,10 +27,6 @@ mod interrupts;
 #[no_mangle]
 pub extern fn _main(multiboot_information_address: usize) {
     init(multiboot_information_address);
-
-    let x = Box::new(41);
-
-    println!("No crash");
 
     loop {}
 }
@@ -74,7 +69,6 @@ fn print_memory_areas(multiboot_information_address: usize) {
 
 #[panic_handler]
 fn panic(info: &PanicInfo) -> ! {
-    let location = info.location().unwrap();
     println!("{}", info);
 
     loop {}
