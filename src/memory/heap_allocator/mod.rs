@@ -1,10 +1,10 @@
+mod bump_allocator;
+mod fixed_size_block_allocator;
+
 use alloc::boxed::Box;
 use alloc::vec::Vec;
-use core::alloc::{GlobalAlloc, Layout};
-use core::ptr::null_mut;
-use linked_list_allocator::LockedHeap;
-use crate::arch::multiboot2::BootInformation;
 use crate::memory::FrameAllocator;
+use crate::memory::heap_allocator::fixed_size_block_allocator::FixedSizeBlockAllocator;
 use crate::memory::paging::mapper::Mapper;
 use crate::memory::paging::{Page, VirtualAddress};
 use crate::memory::paging::entry::EntryFlags;
@@ -12,19 +12,27 @@ use crate::memory::paging::entry::EntryFlags;
 pub const HEAP_START: usize = 0x4444_4444_0000;
 pub const HEAP_SIZE: usize = 100 * 1024; // 100 KiB
 
-pub struct Dummy;
-
 #[global_allocator]
-static ALLOCATOR: LockedHeap = LockedHeap::empty();
+static ALLOCATOR: Locked<FixedSizeBlockAllocator> = Locked::new(FixedSizeBlockAllocator::new());
 
-unsafe impl GlobalAlloc for Dummy {
-    unsafe fn alloc(&self, _layout: Layout) -> *mut u8 {
-        null_mut()
+pub struct Locked<A> {
+    inner: spin::Mutex<A>,
+}
+
+impl<A> Locked<A> {
+    pub const fn new(inner: A) -> Self {
+        Locked {
+            inner: spin::Mutex::new(inner),
+        }
     }
 
-    unsafe fn dealloc(&self, _ptr: *mut u8, _layout: Layout) {
-        panic!("dealloc should never be called");
+    pub fn lock(&self) -> spin::MutexGuard<A> {
+        self.inner.lock()
     }
+}
+
+fn align_up(addr: usize, align: usize) -> usize {
+    (addr + align - 1) & !(align - 1)
 }
 
 pub fn init_heap<A>(mapper: &mut Mapper, frame_allocator: &mut A) where A: FrameAllocator {
@@ -53,22 +61,28 @@ pub fn init_heap<A>(mapper: &mut Mapper, frame_allocator: &mut A) where A: Frame
 // TODO: Setup custom test framework
 pub fn test_heap() {
     // Simple allocation
-    let heap_value_1 = Box::new(41);
-    let heap_value_2 = Box::new(13);
-    assert_eq!(*heap_value_1, 41);
-    assert_eq!(*heap_value_2, 13);
+    {
+        let heap_value_1 = Box::new(41);
+        let heap_value_2 = Box::new(13);
+        assert_eq!(*heap_value_1, 41);
+        assert_eq!(*heap_value_2, 13);
+    }
 
     // Large vec
-    let n =1000;
-    let mut vec = Vec::new();
-    for i in 0..n {
-        vec.push(i);
+    {
+        let n =1000;
+        let mut vec = Vec::new();
+        for i in 0..n {
+            vec.push(i);
+        }
+        assert_eq!(vec.iter().sum::<u64>(), (n - 1) * n / 2);
     }
-    assert_eq!(vec.iter().sum::<u64>(), (n - 1) * n / 2);
 
     // Many boxes
-    for i in 0..HEAP_SIZE {
-        let x = Box::new(i);
-        assert_eq!(*x, i);
+    {
+        for i in 0..HEAP_SIZE {
+            let x = Box::new(i);
+            assert_eq!(*x, i);
+        }
     }
 }

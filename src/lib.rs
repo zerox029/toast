@@ -6,6 +6,7 @@
 #![feature(ptr_internals)]
 #![feature(panic_info_message)]
 #![feature(allocator_api)]
+#![feature(const_mut_refs)]
 
 extern crate alloc;
 extern crate rlibc;

@@ -3,8 +3,7 @@ use crate::arch::multiboot2::BootInformation;
 use crate::memory::paging::PhysicalAddress;
 
 use self::paging::remap_kernel;
-use self::heap_allocator::init_heap;
-use crate::memory::heap_allocator::test_heap;
+use self::heap_allocator::{init_heap, test_heap};
 
 pub mod page_frame_allocator;
 pub mod paging;
