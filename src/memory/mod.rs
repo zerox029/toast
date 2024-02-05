@@ -1,10 +1,13 @@
+use core::ops::DerefMut;
+use crate::arch::multiboot2::BootInformation;
 use crate::memory::paging::PhysicalAddress;
 
-pub use self::paging::test_paging;
-pub use self::paging::remap_kernel;
+use self::paging::remap_kernel;
+use self::heap_allocator::init_heap;
 
 pub mod page_frame_allocator;
-mod paging;
+pub mod paging;
+pub mod heap_allocator;
 
 pub const PAGE_SIZE: usize = 4096;
 
@@ -58,4 +61,22 @@ impl Iterator for FrameIter {
 pub trait FrameAllocator {
     fn allocate_frame(&mut self) -> Option<Frame>;
     fn deallocate_frame(&mut self, frame: Frame);
+}
+
+pub fn init_memory_modules(boot_information: &BootInformation) {
+    let memory_map = boot_information.memory_map().expect("Memory map tag required");
+    let elf_symbols = boot_information.elf_symbols().expect("Elf symbols tag required");
+
+    let kernel_start = elf_symbols.section_headers().map(|s| s.start_address()).min().unwrap();
+    let kernel_end = elf_symbols.section_headers().map(|s| s.end_address()).min().unwrap();
+
+    let multiboot_start = boot_information.start_address();
+    let multiboot_end = multiboot_start + (boot_information.total_size as usize);
+
+    let mut frame_allocator = page_frame_allocator::PageFrameAllocator::new(kernel_start, kernel_end,
+                                                                                            multiboot_start, multiboot_end,
+                                                                                            memory_map.entries());
+
+    let mut active_page_table = remap_kernel(&mut frame_allocator, &boot_information);
+    init_heap(active_page_table.deref_mut(), &mut frame_allocator);
 }

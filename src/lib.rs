@@ -3,14 +3,18 @@
 #![feature(lang_items)]
 #![feature(ptr_internals)]
 #![feature(panic_info_message)]
+#![feature(allocator_api)]
 #![no_std]
 
+extern crate alloc;
 extern crate rlibc;
 
 use core::panic::PanicInfo;
+use alloc::boxed::Box;
 use x86_64::registers::model_specific::Efer;
 use x86_64::registers::control::{Cr0, Cr0Flags, EferFlags};
-use crate::memory::FrameAllocator;
+use crate::memory::{FrameAllocator};
+use crate::memory::init_memory_modules;
 
 pub mod vga_buffer;
 pub mod arch;
@@ -18,35 +22,28 @@ pub mod memory;
 
 #[no_mangle]
 pub extern fn _main(multiboot_information_address: usize) {
+    init(multiboot_information_address);
+
+    let x = Box::new(41);
+
+    println!("No crash");
+
+    loop {}
+}
+
+fn init(multiboot_information_address: usize) {
     vga_buffer::clear_screen();
 
+    println!("Toast version v0.0.1-x86_64");
+
     let boot_info = unsafe{ arch::multiboot2::load(multiboot_information_address) };
-    let memory_map = boot_info.memory_map().expect("Memory map tag required");
-    let elf_symbols = boot_info.elf_symbols().expect("Elf symbols tag required");
-
-    let kernel_start = elf_symbols.section_headers().map(|s| s.start_address()).min().unwrap();
-    let kernel_end = elf_symbols.section_headers().map(|s| s.end_address()).min().unwrap();
-
-    let multiboot_start = multiboot_information_address;
-    let multiboot_end = multiboot_start + (boot_info.total_size as usize);
-
-
-    let mut frame_allocator = memory::page_frame_allocator::PageFrameAllocator::new(kernel_start,
-                                                                                    kernel_end,
-                                                                                    multiboot_start,
-                                                                                    multiboot_end,
-                                                                                    memory_map.entries());
 
     unsafe {
         Efer::write(EferFlags::NO_EXECUTE_ENABLE);
         Cr0::write(Cr0::read() | Cr0Flags::WRITE_PROTECT);
     }
 
-    memory::remap_kernel(&mut frame_allocator, boot_info);
-    frame_allocator.allocate_frame();
-    println!("No crash");
-
-    loop {}
+    init_memory_modules(boot_info);
 }
 
 fn print_memory_areas(multiboot_information_address: usize) {
@@ -70,7 +67,7 @@ fn print_memory_areas(multiboot_information_address: usize) {
 #[panic_handler]
 fn panic(info: &PanicInfo) -> ! {
     let location = info.location().unwrap();
-    println!("\nPANIC in {} at line {}...", location.file(), location.line());
+    println!("{}", info);
 
     loop {}
 }

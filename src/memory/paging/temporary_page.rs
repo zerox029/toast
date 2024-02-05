@@ -13,7 +13,7 @@ impl TemporaryPage {
         where A: FrameAllocator
     {
         TemporaryPage {
-            page: page,
+            page,
             allocator: TinyAllocator::new(allocator),
         }
     }

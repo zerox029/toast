@@ -1,5 +1,5 @@
 use bitflags::bitflags;
-use crate::arch::multiboot2::structures::{ElfSectionHeaderFlags, ElfSectionHeaderType, SectionHeader};
+use crate::arch::multiboot2::structures::{ElfSectionHeaderFlags, SectionHeader};
 use crate::memory::Frame;
 
 pub struct Entry(u64);
