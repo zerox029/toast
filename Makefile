@@ -23,8 +23,8 @@ run: $(iso)
 run-with-crash-info: $(iso)
 	@qemu-system-x86_64 -d int -no-reboot -cdrom $(iso) -s
 
-debug: $(iso)
-	@qemu-system-x86_64 -cdrom $(iso) -s -S
+test: $(iso)
+	@qemu-system-x86_64 -cdrom $(iso) -s
 
 gdb:
 	gdb $(kernel) -ex "target remote :1234"

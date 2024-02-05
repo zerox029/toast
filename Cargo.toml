@@ -7,10 +7,6 @@ authors = ["Emma Plante"]
 [lib]
 crate-type = ["staticlib"]
 
-[[test]]
-name = "should_panic"
-harness = false
-
 [dependencies]
 rlibc = "1.0"
 volatile = "0.2.6"

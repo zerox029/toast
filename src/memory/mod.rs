@@ -4,6 +4,7 @@ use crate::memory::paging::PhysicalAddress;
 
 use self::paging::remap_kernel;
 use self::heap_allocator::init_heap;
+use crate::memory::heap_allocator::test_heap;
 
 pub mod page_frame_allocator;
 pub mod paging;
@@ -79,4 +80,6 @@ pub fn init_memory_modules(boot_information: &BootInformation) {
 
     let mut active_page_table = remap_kernel(&mut frame_allocator, &boot_information);
     init_heap(active_page_table.deref_mut(), &mut frame_allocator);
+
+    test_heap();
 }

@@ -1,6 +1,9 @@
+use alloc::boxed::Box;
+use alloc::vec::Vec;
 use core::alloc::{GlobalAlloc, Layout};
 use core::ptr::null_mut;
 use linked_list_allocator::LockedHeap;
+use crate::arch::multiboot2::BootInformation;
 use crate::memory::FrameAllocator;
 use crate::memory::paging::mapper::Mapper;
 use crate::memory::paging::{Page, VirtualAddress};
@@ -44,5 +47,28 @@ pub fn init_heap<A>(mapper: &mut Mapper, frame_allocator: &mut A) where A: Frame
 
     unsafe {
         ALLOCATOR.lock().init(HEAP_START, HEAP_START);
+    }
+}
+
+// TODO: Setup custom test framework
+pub fn test_heap() {
+    // Simple allocation
+    let heap_value_1 = Box::new(41);
+    let heap_value_2 = Box::new(13);
+    assert_eq!(*heap_value_1, 41);
+    assert_eq!(*heap_value_2, 13);
+
+    // Large vec
+    let n =1000;
+    let mut vec = Vec::new();
+    for i in 0..n {
+        vec.push(i);
+    }
+    assert_eq!(vec.iter().sum::<u64>(), (n - 1) * n / 2);
+
+    // Many boxes
+    for i in 0..HEAP_SIZE {
+        let x = Box::new(i);
+        assert_eq!(*x, i);
     }
 }

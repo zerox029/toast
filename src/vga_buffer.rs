@@ -3,9 +3,14 @@ use core::ptr::Unique;
 use spin::Mutex;
 use volatile::Volatile;
 
+const BUFFER_HEIGHT: usize = 25;
+const BUFFER_WIDTH: usize = 80;
+
+const DEFAULT_COLOR_CODE: ColorCode = ColorCode::new(Color::White, Color::Black);
+
 pub static WRITER: Mutex<Writer> = Mutex::new(Writer {
     column_position: 0,
-    color_code: ColorCode::new(Color::White, Color::Black),
+    color_code: DEFAULT_COLOR_CODE,
     buffer: unsafe { Unique::new_unchecked(0xb8000 as *mut _) },
 });
 
@@ -32,10 +37,10 @@ pub enum Color {
 }
 
 #[derive(Debug, Clone, Copy)]
-struct ColorCode(u8);
+pub struct ColorCode(u8);
 
 impl ColorCode {
-    const fn new(foreground: Color, background: Color) -> ColorCode {
+    pub const fn new(foreground: Color, background: Color) -> ColorCode {
         ColorCode((background as u8) << 4 | (foreground as u8))
     }
 }
@@ -46,9 +51,6 @@ struct ScreenChar {
     ascii_character: u8,
     color_code: ColorCode,
 }
-
-const BUFFER_HEIGHT: usize = 25;
-const BUFFER_WIDTH: usize = 80;
 
 struct Buffer {
     chars: [[Volatile<ScreenChar>; BUFFER_WIDTH]; BUFFER_HEIGHT],
@@ -61,6 +63,14 @@ pub struct Writer {
 }
 
 impl Writer {
+    fn buffer(&mut self) -> &mut Buffer {
+        unsafe{ self.buffer.as_mut() }
+    }
+
+    fn set_color_code(&mut self, color_code: ColorCode) {
+        self.color_code = color_code;
+    }
+
     pub fn write_byte(&mut self, byte: u8) {
         match byte {
             b'\n' => self.new_line(),
@@ -75,7 +85,7 @@ impl Writer {
                 let color_code = self.color_code;
                 self.buffer().chars[row][col].write(ScreenChar {
                     ascii_character: byte,
-                    color_code: color_code,
+                    color_code,
                 });
                 self.column_position += 1;
             }
@@ -86,10 +96,6 @@ impl Writer {
         for byte in s.bytes() {
             self.write_byte(byte)
         }
-    }
-
-    fn buffer(&mut self) -> &mut Buffer {
-        unsafe{ self.buffer.as_mut() }
     }
 
     fn new_line(&mut self) {
@@ -139,6 +145,7 @@ macro_rules! println {
 
 pub fn print(args: fmt::Arguments) {
     use core::fmt::Write;
+
     WRITER.lock().write_fmt(args).unwrap();
 }
 

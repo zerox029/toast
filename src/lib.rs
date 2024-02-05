@@ -1,10 +1,11 @@
-#![allow(internal_features)]
+#![no_std]
+#![no_main]
 #![allow(dead_code)]
+#![allow(internal_features)]
 #![feature(lang_items)]
 #![feature(ptr_internals)]
 #![feature(panic_info_message)]
 #![feature(allocator_api)]
-#![no_std]
 
 extern crate alloc;
 extern crate rlibc;
@@ -13,12 +14,12 @@ use core::panic::PanicInfo;
 use alloc::boxed::Box;
 use x86_64::registers::model_specific::Efer;
 use x86_64::registers::control::{Cr0, Cr0Flags, EferFlags};
-use crate::memory::{FrameAllocator};
 use crate::memory::init_memory_modules;
 
 pub mod vga_buffer;
 pub mod arch;
 pub mod memory;
+mod test_runner;
 
 #[no_mangle]
 pub extern fn _main(multiboot_information_address: usize) {
