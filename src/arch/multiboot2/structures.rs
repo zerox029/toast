@@ -1,4 +1,5 @@
 use bitflags::bitflags;
+use crate::acpi::{RootSystemDescriptorPointerV1, RootSystemDescriptorPointerV2};
 
 /// Consult https://www.gnu.org/software/grub/manual/multiboot2/html_node/Boot-information-format.html for
 /// implementation details
@@ -19,8 +20,8 @@ pub enum TagType {
     EFI32BitSystemTablePointer = 11,
     EFI64BitSystemTablePointer = 12,
     SMBIOSTables = 13,
-    ACPIoldRSDP = 14,
-    ACPInewRSDP = 15,
+    ACPIOldRSDP = 14,
+    ACPINewRSDP = 15,
     NetworkingInformation = 16,
     EFIMemoryMap = 17,
     EFIBootServicesNotTerminated = 18,
@@ -112,7 +113,7 @@ pub struct ElfSymbols {
     num: u32,
     entsize: u32,
     shndx: u32,
-    first_section_header: SectionHeader,
+    first_section_header: ElfSectionHeader,
 }
 impl ElfSymbols {
     pub fn section_headers(&'static self) -> SectionHeaderIter {
@@ -125,21 +126,21 @@ impl ElfSymbols {
 }
 #[derive(Clone)]
 pub struct SectionHeaderIter {
-    pub current_header: &'static SectionHeader,
+    pub current_header: &'static ElfSectionHeader,
     pub remaining_headers: u32,
     pub entry_size: u32
 }
 impl Iterator for SectionHeaderIter {
-    type Item = &'static SectionHeader;
+    type Item = &'static ElfSectionHeader;
 
-    fn next(&mut self) -> Option<&'static SectionHeader> {
+    fn next(&mut self) -> Option<&'static ElfSectionHeader> {
         if self.remaining_headers == 0 {
             None
         }
         else {
             let header = self.current_header;
             let next_header_address = (self.current_header as *const _ as u32) + self.entry_size;
-            self.current_header = unsafe { &*(next_header_address as *const SectionHeader) };
+            self.current_header = unsafe { &*(next_header_address as *const ElfSectionHeader) };
             self.remaining_headers -= 1;
 
             if header.typ == ElfSectionHeaderType::Null as u32 {
@@ -154,7 +155,7 @@ impl Iterator for SectionHeaderIter {
 /// Consult https://man7.org/linux/man-pages/man5/elf.5.html and https://refspecs.linuxfoundation.org/elf/elf.pdf
 /// for implementation details
 #[repr(C, packed)]
-pub struct SectionHeader {
+pub struct ElfSectionHeader {
     name: u32,
     typ: u32,
     flags: u64,
@@ -167,7 +168,7 @@ pub struct SectionHeader {
     entsize: u64,
 }
 
-impl SectionHeader {
+impl ElfSectionHeader {
     pub fn start_address(&self) -> usize {
         self.addr as usize
     }
@@ -209,6 +210,20 @@ bitflags! {
         const EXECUTABLE = 0x4;
 
     }
+}
+
+#[repr(C)]
+pub struct ACPIOldRSDP {
+    pub typ: TagType,   // 14
+    pub size: u32,
+    pub rsdp_v1: RootSystemDescriptorPointerV1,
+}
+
+#[repr(C)]
+pub struct ACPINewRSDP {
+    pub typ: TagType,   // 15
+    pub size: u32,
+    pub rsdp_v2: RootSystemDescriptorPointerV2,
 }
 
 #[repr(C)]

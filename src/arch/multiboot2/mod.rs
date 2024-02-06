@@ -33,6 +33,16 @@ impl BootInformation {
             .map(|tag| unsafe{ &*(tag as *const structures::Tag as *const structures::ElfSymbols )})
     }
 
+    pub fn acpi_old_rsdp(&self) -> Option<&'static structures::ACPIOldRSDP> {
+        self.get_tag(structures::TagType::ACPIOldRSDP)
+            .map(|tag| unsafe{ &*(tag as *const structures::Tag as *const structures::ACPIOldRSDP )})
+    }
+
+    pub fn acpi_new_rsdp(&self) -> Option<&'static structures::ACPINewRSDP> {
+        self.get_tag(structures::TagType::ACPINewRSDP)
+            .map(|tag| unsafe{ &*(tag as *const structures::Tag as *const structures::ACPINewRSDP )})
+    }
+
     pub fn networking_information(&self) -> Option<&'static structures::NetworkingInformation> {
         self.get_tag(structures::TagType::NetworkingInformation)
             .map(|tag| unsafe{ &*(tag as *const structures::Tag as *const structures::NetworkingInformation )})

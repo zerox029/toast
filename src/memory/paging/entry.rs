@@ -1,5 +1,5 @@
 use bitflags::bitflags;
-use crate::arch::multiboot2::structures::{ElfSectionHeaderFlags, SectionHeader};
+use crate::arch::multiboot2::structures::{ElfSectionHeaderFlags, ElfSectionHeader};
 use crate::memory::Frame;
 
 pub struct Entry(u64);
@@ -49,7 +49,7 @@ bitflags! {
 }
 
 impl EntryFlags {
-    pub fn from_elf_section_flags(section: &SectionHeader) -> EntryFlags {
+    pub fn from_elf_section_flags(section: &ElfSectionHeader) -> EntryFlags {
         let mut flags = EntryFlags::empty();
 
         if section.flags().contains(ElfSectionHeaderFlags::ALLOCATED) {

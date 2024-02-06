@@ -15,14 +15,19 @@ extern crate rlibc;
 use core::panic::PanicInfo;
 use x86_64::registers::model_specific::Efer;
 use x86_64::registers::control::{Cr0, Cr0Flags, EferFlags};
+use crate::acpi::init_acpi;
 use crate::interrupts::init_interrupts;
 use crate::memory::init_memory_modules;
+use crate::ps2::init_ps2_controller;
 
 pub mod vga_buffer;
 pub mod arch;
 pub mod memory;
 mod test_runner;
 mod interrupts;
+mod ps2;
+mod acpi;
+mod utils;
 
 #[no_mangle]
 pub extern fn _main(multiboot_information_address: usize) {
@@ -45,8 +50,8 @@ fn init(multiboot_information_address: usize) {
 
     init_memory_modules(boot_info);
     init_interrupts();
-
-    x86_64::instructions::interrupts::int3();
+    init_acpi(boot_info);
+    //init_ps2_controller();
 }
 
 fn print_memory_areas(multiboot_information_address: usize) {
