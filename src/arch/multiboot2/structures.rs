@@ -1,5 +1,5 @@
 use bitflags::bitflags;
-use crate::acpi::{RootSystemDescriptorPointerV1, RootSystemDescriptorPointerV2};
+use crate::acpi::root_system_descriptor_pointer::{RootSystemDescriptorPointerV1, RootSystemDescriptorPointerV2};
 
 /// Consult https://www.gnu.org/software/grub/manual/multiboot2/html_node/Boot-information-format.html for
 /// implementation details

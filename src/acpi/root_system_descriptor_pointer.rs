@@ -1,5 +1,3 @@
-use crate::acpi::{any_as_u8_slice, RootSystemDescriptorPointer};
-use crate::acpi::acpi_tables::FixedACPIDescriptionTable;
 use crate::arch::multiboot2::BootInformation;
 use crate::utils::any_as_u8_slice;
 
@@ -18,9 +16,6 @@ pub struct RootSystemDescriptorPointerV1 {
 }
 
 impl RootSystemDescriptorPointerV1 {
-    pub fn fadt() -> &FixedACPIDescriptionTable {
-
-    }
 }
 
 #[repr(C)]
@@ -35,6 +30,10 @@ pub struct RootSystemDescriptorPointerV2 {
     extended_checksum: u8,
     _reserved: [u8; 3],
 }
+
+trait RootSystemDescriptorPointer {}
+impl RootSystemDescriptorPointer for RootSystemDescriptorPointerV1 {}
+impl RootSystemDescriptorPointer for RootSystemDescriptorPointerV2 {}
 
 pub fn rsdt_address(boot_information: &BootInformation) -> u32 {
     let rsdp_v2 = find_rsdp_v2(boot_information);

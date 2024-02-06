@@ -22,7 +22,7 @@ impl ACPISDTHeader {
 #[repr(C, packed)]
 pub struct RootSystemDescriptorTable {
     header: ACPISDTHeader,
-    std_pointers: [u32; header.length]
+    std_pointers: [u32]
 }
 
 impl RootSystemDescriptorTable {
