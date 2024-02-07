@@ -6,6 +6,8 @@ use crate::memory::paging::entry::EntryFlags;
 use crate::memory::paging::temporary_page::TemporaryPage;
 use crate::memory::paging::mapper::Mapper;
 use crate::{println, print};
+use crate::acpi::acpi_tables::RootSystemDescriptorTable;
+use crate::acpi::root_system_descriptor_pointer::find_rsdp;
 
 pub mod entry;
 pub mod table;
@@ -180,6 +182,7 @@ pub fn remap_kernel<A>(allocator: &mut A, boot_info: &BootInformation) -> Active
     active_table.with(&mut new_table, &mut temporary_page, |mapper| {
        let elf_sections = boot_info.elf_symbols().expect("Memory map required");
 
+        // Identity mapping the kernel sections
         for section in elf_sections.section_headers() {
             if !section.is_allocated() {
                 continue;
@@ -195,9 +198,11 @@ pub fn remap_kernel<A>(allocator: &mut A, boot_info: &BootInformation) -> Active
             }
         }
 
+        // Identity map the VGA buffer frame
         let vga_buffer_frame = Frame::containing_address(0xb8000);
         mapper.identity_map(vga_buffer_frame, EntryFlags::WRITABLE, allocator);
 
+        // Identity map the multiboot info
         let multiboot_start = Frame::containing_address(boot_info.start_address());
         let multiboot_end = Frame::containing_address(boot_info.end_address() - 1);
         for frame in Frame::range_inclusive(multiboot_start, multiboot_end) {

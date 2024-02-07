@@ -90,8 +90,8 @@ impl Mapper {
         self.map_to(page, frame, flags, allocator);
     }
 
-    /// Identity map the given frame with the provided flags.
-    /// The `FrameAllocator` is used to create new page tables if needed.
+    /// Identity map the given frame with the provided flags such that its virtual address corresponds
+    /// to its physical address. The `FrameAllocator` is used to create new page tables if needed.
     pub fn identity_map<A>(&mut self, frame: Frame, flags: EntryFlags, allocator: &mut A) where A: FrameAllocator {
         let page = Page::containing_address(frame.start_address());
         self.map_to(page, frame, flags, allocator);
@@ -117,5 +117,14 @@ impl Mapper {
         tlb::flush(VirtAddr::new(page.start_address() as u64));
         // TODO free p(1,2,3) table if empty
         // allocator.deallocate_frame(frame);
+    }
+
+    pub fn check_is_mapped<A>(&mut self, page: Page, allocator: &mut A) -> bool where A: FrameAllocator {
+        let p4 = self.p4_mut();
+        let p3 = p4.next_table_create(page.p4_index(), allocator);
+        let p2 = p3.next_table_create(page.p3_index(), allocator);
+        let p1 = p2.next_table_create(page.p2_index(), allocator);
+
+        p1[page.p1_index()].is_unused()
     }
 }

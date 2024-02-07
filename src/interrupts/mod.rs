@@ -59,6 +59,4 @@ fn map_handlers() {
     IDT.set_entry(IdtVector::HypervisorInjectionException, GateDescriptor::new(hypervisor_injection_exception_handler as u64));
     IDT.set_entry(IdtVector::VMMCommunicationException, GateDescriptor::new(vmm_communication_exception_handler as u64));
     IDT.set_entry(IdtVector::SecurityException, GateDescriptor::new(security_exception_handler as u64));
-
-
 }

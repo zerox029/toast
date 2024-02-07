@@ -6,23 +6,26 @@ pub enum RSDP {
     V2(&'static RootSystemDescriptorPointerV2),
 }
 
-#[repr(C)]
+#[repr(C, packed)]
 pub struct RootSystemDescriptorPointerV1 {
-    signature: [char; 8],
+    signature: [u8; 8],
     checksum: u8,
-    oemid: [char; 6],
+    oemid: [u8; 6],
     revision: u8,
     rsdt_address: u32,
 }
 
 impl RootSystemDescriptorPointerV1 {
+    pub fn rsdt_address(&self) -> u32 {
+        self.rsdt_address
+    }
 }
 
-#[repr(C)]
+#[repr(C, packed)]
 pub struct RootSystemDescriptorPointerV2 {
-    signature: [char; 8],
+    signature: [u8; 8],
     checksum: u8,
-    oemid: [char; 6],
+    oemid: [u8; 6],
     revision: u8,
     rsdt_address: u32,
     length: u32,
@@ -31,63 +34,60 @@ pub struct RootSystemDescriptorPointerV2 {
     _reserved: [u8; 3],
 }
 
+impl RootSystemDescriptorPointerV2 {
+    pub fn rsdt_address(&self) -> u32 {
+        self.rsdt_address
+    }
+}
+
 trait RootSystemDescriptorPointer {}
 impl RootSystemDescriptorPointer for RootSystemDescriptorPointerV1 {}
 impl RootSystemDescriptorPointer for RootSystemDescriptorPointerV2 {}
 
-pub fn rsdt_address(boot_information: &BootInformation) -> u32 {
-    let rsdp_v2 = find_rsdp_v2(boot_information);
+pub fn find_rsdp(boot_information: &BootInformation) -> Result<RSDP, &'static str> {
+    let rsdp_v2 = match boot_information.acpi_new_rsdp() {
+        Some(rsdp) => Some(&rsdp.rsdp_v2),
+        None => None
+    };
 
     // V1
     if rsdp_v2.is_none() {
-        let rsdp_v1 = find_rsdp_v1(boot_information);
+        let rsdp_v1 = match boot_information.acpi_old_rsdp() {
+            Some(rsdp) => Some(&rsdp.rsdp_v1),
+            None => None
+        };
 
         if rsdp_v1.is_none() {
-            panic!("ACPI RSDP tag is required...");
+            return Err("ACPI RSDP tag is required...")
         }
 
-        if !validate_rsdp_checksum(rsdp_v1.unwrap()) {
-            panic!("Checksum validation failed...");
+        let rsdp_v1 = rsdp_v1.unwrap();
+
+        if !validate_rsdp_checksum(rsdp_v1) {
+            return Err("Checksum validation failed...")
         }
 
-        rsdp_v1.unwrap().rsdt_address
+        Ok(RSDP::V1(rsdp_v1))
     }
     // V2
     else {
         if !validate_rsdp_checksum(rsdp_v2.unwrap()) {
-            panic!("Checksum validation failed...");
+            return Err("Checksum validation failed...")
         }
 
-        rsdp_v2.unwrap().rsdt_address
-    }
-}
-
-fn find_rsdp_v2(boot_information: &BootInformation) -> Option<&RootSystemDescriptorPointerV2> {
-    let acpi_new_rsdp = boot_information.acpi_new_rsdp();
-
-    match acpi_new_rsdp {
-        Some(rsdp) => Some(&rsdp.rsdp_v2),
-        None => None
-    }
-}
-
-fn find_rsdp_v1(boot_information: &BootInformation) -> Option<&RootSystemDescriptorPointerV1> {
-    let acpi_old_rsdp = boot_information.acpi_old_rsdp();
-
-    match acpi_old_rsdp {
-        Some(rsdp) => Some(&rsdp.rsdp_v1),
-        None => None
+        // technically should be reading xsdt, but I don't think it really matters, and Toast uses V1 anyway
+        Ok(RSDP::V2(rsdp_v2.unwrap()))
     }
 }
 
 fn validate_rsdp_checksum<T: RootSystemDescriptorPointer>(rsdp: &T)-> bool {
     // Add up every byte, the lowest byte of the result should be zero
-    let mut rsdp_bytes: &[u8];
+    let rsdp_bytes: &[u8];
     unsafe {
         rsdp_bytes = any_as_u8_slice(rsdp);
     }
 
-    let sum: u64 = rsdp_bytes.iter().map(|&n| n as u64).sum();
+    let sum: u64 = rsdp_bytes.iter().map(|&n| n as u64 ).sum();
 
     sum % 2 == 0
 }

@@ -1,6 +1,7 @@
 use core::ops::DerefMut;
 use crate::arch::multiboot2::BootInformation;
-use crate::memory::paging::PhysicalAddress;
+use crate::memory::page_frame_allocator::PageFrameAllocator;
+use crate::memory::paging::{ActivePageTable, PhysicalAddress};
 
 use self::paging::remap_kernel;
 use self::heap_allocator::{init_heap, test_heap};
@@ -18,7 +19,7 @@ pub struct Frame {
 
 impl Frame {
     /// Returns the frame containing the address passed as argument
-    fn containing_address(address: usize) -> Frame {
+    pub fn containing_address(address: usize) -> Frame {
         Frame{ number: address / PAGE_SIZE }
     }
 
@@ -63,7 +64,7 @@ pub trait FrameAllocator {
     fn deallocate_frame(&mut self, frame: Frame);
 }
 
-pub fn init_memory_modules(boot_information: &BootInformation) {
+pub fn init_memory_modules(boot_information: &BootInformation) -> (PageFrameAllocator, ActivePageTable) {
     let memory_map = boot_information.memory_map().expect("Memory map tag required");
     let elf_symbols = boot_information.elf_symbols().expect("Elf symbols tag required");
 
@@ -73,12 +74,14 @@ pub fn init_memory_modules(boot_information: &BootInformation) {
     let multiboot_start = boot_information.start_address();
     let multiboot_end = multiboot_start + (boot_information.total_size as usize);
 
-    let mut frame_allocator = page_frame_allocator::PageFrameAllocator::new(kernel_start, kernel_end,
-                                                                                            multiboot_start, multiboot_end,
-                                                                                            memory_map.entries());
+    let mut frame_allocator = PageFrameAllocator::new(kernel_start, kernel_end,
+                                                                      multiboot_start, multiboot_end,
+                                                                      memory_map.entries());
 
     let mut active_page_table = remap_kernel(&mut frame_allocator, &boot_information);
     init_heap(active_page_table.deref_mut(), &mut frame_allocator);
 
     test_heap();
+
+    (frame_allocator, active_page_table)
 }

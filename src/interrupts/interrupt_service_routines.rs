@@ -1,3 +1,4 @@
+use core::arch::asm;
 use crate::{println, print};
 
 pub type HandlerFuncWithoutErrCode = extern "x86-interrupt" fn(InterruptStackFrame);
@@ -81,6 +82,7 @@ pub extern "x86-interrupt" fn general_protection_fault_handler(stack_frame: Inte
 pub extern "x86-interrupt" fn page_fault_handler(stack_frame: InterruptStackFrame, error_code: u64) {
     println!("Caught a page fault interrupt! Error code {}", error_code);
     println!("{:#?}", stack_frame);
+    unsafe { asm!("hlt;"); };
 }
 
 pub extern "x86-interrupt" fn x87_floating_point_exception_handler(stack_frame: InterruptStackFrame) {

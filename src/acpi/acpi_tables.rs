@@ -1,13 +1,16 @@
+use alloc::borrow::ToOwned;
+use core::mem::size_of;
 use crate::utils::any_as_u8_slice;
 
-#[repr(C, packed)]
+#[repr(C)]
+#[derive(Clone, Copy)]
 pub struct ACPISDTHeader {
-    signature: [char; 4],
+    signature: [u8; 4],
     length: u32,
     revision: u8,
     checksum: u8,
-    oemid: [char; 6],
-    oemt_table_id: [char; 8],
+    oemid: [u8; 6],
+    oemt_table_id: [u8; 8],
     oem_revision: u32,
     creator_id: u32,
     creator_revision: u32,
@@ -19,17 +22,66 @@ impl ACPISDTHeader {
     }
 }
 
-#[repr(C, packed)]
+#[repr(C)]
+#[derive(Clone, Copy)]
 pub struct RootSystemDescriptorTable {
     header: ACPISDTHeader,
-    std_pointers: [u32]
+    first_pointer: u32,
 }
+
 
 impl RootSystemDescriptorTable {
+    pub fn from(address: u32) -> &'static RootSystemDescriptorTable {
+        unsafe { &mut *(address as *mut RootSystemDescriptorTable) }
+    }
 
+    pub fn header(&self) -> &ACPISDTHeader {
+        &self.header
+    }
+
+    pub fn fadt_address(&self) -> Option<u32> {
+        self.sdt_pointers().find(|&p| detect_byte_signature(p, &[b'F', b'A', b'C', b'P']))
+    }
+
+    pub fn sdt_pointers(&self) -> SDTPointerIter {
+        SDTPointerIter {
+            current: &self.first_pointer as *const _,
+            index: 0,
+            length: self.sdt_pointers_length(),
+        }
+    }
+
+    fn sdt_pointers_length(&self) -> usize {
+        (self.header.length as usize - size_of::<ACPISDTHeader>()) / size_of::<u32>()
+    }
 }
 
-#[repr(C, packed)]
+pub struct SDTPointerIter {
+    current: *const u32,
+    index: usize,
+    length: usize,
+}
+
+impl Iterator for SDTPointerIter {
+    type Item = u32;
+
+    fn next(&mut self) -> Option<u32> {
+        let current_entry = &unsafe { *self.current };
+        let mut entry_address = self.current as usize;
+        entry_address += size_of::<u32>();
+        self.index += 1;
+        self.current = entry_address as *const u32;
+
+        if self.index <= self.length {
+            Some(current_entry.to_owned())
+        }
+        else {
+            None
+        }
+    }
+}
+
+#[repr(C)]
 pub struct FixedACPIDescriptionTable {
     header: ACPISDTHeader,
     firmware_ctrl: u32,
@@ -96,7 +148,7 @@ pub struct FixedACPIDescriptionTable {
     x_gpe1_block: GenericAddressStructure,
 }
 
-#[repr(C, packed)]
+#[repr(C)]
 pub struct GenericAddressStructure {
     address_space: GASAddressSpace,
     bit_width: u8,
@@ -143,7 +195,7 @@ enum PreferredPowerManagementProfile {
 
 fn validate_rsdp_checksum(fadt: &FixedACPIDescriptionTable)-> bool {
     // Add up every byte, the lowest byte of the result should be zero
-    let mut fadt_bytes: &[u8];
+    let fadt_bytes: &[u8];
     unsafe {
         fadt_bytes = any_as_u8_slice(fadt);
     }
@@ -151,4 +203,10 @@ fn validate_rsdp_checksum(fadt: &FixedACPIDescriptionTable)-> bool {
     let sum: u64 = fadt_bytes.iter().map(|&n| n as u64).sum();
 
     sum % 2 == 0
+}
+
+fn detect_byte_signature(address: u32, signature: &[u8; 4]) -> bool {
+    let detected_signature = unsafe { &*(address as *const [u8; 4]) };
+
+    detected_signature == signature
 }
