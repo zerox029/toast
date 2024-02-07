@@ -142,7 +142,7 @@ create_page_tables:
     ret
 
 enable_paging:
-    ; load P4 to cr3 register (cpu uses this to access the P4 table)
+    ; load P4 to cr3 register (x86_64 uses this to access the P4 table)
     mov eax, p4_table
     mov cr3, eax
 
