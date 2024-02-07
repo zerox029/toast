@@ -6,8 +6,6 @@ use crate::memory::paging::entry::EntryFlags;
 use crate::memory::paging::temporary_page::TemporaryPage;
 use crate::memory::paging::mapper::Mapper;
 use crate::{println, print};
-use crate::acpi::acpi_tables::RootSystemDescriptorTable;
-use crate::acpi::root_system_descriptor_pointer::find_rsdp;
 
 pub mod entry;
 pub mod table;
@@ -189,7 +187,7 @@ pub fn remap_kernel<A>(allocator: &mut A, boot_info: &BootInformation) -> Active
             }
 
             assert_eq!(section.start_address() % PAGE_SIZE, 0, "sections need to be page aligned");
-            println!("Mapping kernel section at address: {:#x}, size: {:#x}", section.start_address(), section.size());
+            println!("Mapping kernel section at address: {:#X}, size: {:#X}", section.start_address(), section.size());
 
             let start_frame = Frame::containing_address(section.start_address());
             let end_frame = Frame::containing_address(section.end_address() - 1);

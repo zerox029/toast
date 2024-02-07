@@ -23,5 +23,5 @@ pub fn init_acpi(boot_info: &BootInformation, allocator: &mut PageFrameAllocator
 
     let fadt_address = rsdt.fadt_address();
 
-    println!("{:X}", fadt_address.unwrap());
+    println!("Found FADT at address 0x{:X}", fadt_address.unwrap());
 }
