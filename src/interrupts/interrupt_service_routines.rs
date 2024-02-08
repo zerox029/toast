@@ -2,6 +2,7 @@ use core::arch::asm;
 use core::fmt;
 use core::fmt::Formatter;
 use crate::{println, print};
+use crate::interrupts::{MASTER_PIC_COMMAND_PORT, PIC_EOI};
 
 pub type HandlerFuncWithoutErrCode = extern "x86-interrupt" fn(InterruptStackFrame);
 pub type HandlerFuncWithErrCode = extern "x86-interrupt" fn(InterruptStackFrame, error_code: u64);
@@ -143,7 +144,44 @@ pub extern "x86-interrupt" fn security_exception_handler(stack_frame: InterruptS
     println!("{:#?}", stack_frame);
 }
 
-pub extern "x86-interrupt" fn default_irq_handler(stack_frame: InterruptStackFrame) {
-    println!("Caught an IRQ!");
+pub extern "x86-interrupt" fn irq0_handler(stack_frame: InterruptStackFrame) {
+    println!("Caught IRQ0!");
+    println!("{:#?}", stack_frame);
+}
+
+pub extern "x86-interrupt" fn irq1_handler(stack_frame: InterruptStackFrame) {
+    println!("Caught IRQ1!");
+    println!("{:#?}", stack_frame);
+
+    MASTER_PIC_COMMAND_PORT.lock().write(PIC_EOI).unwrap();
+}
+
+pub extern "x86-interrupt" fn irq2_handler(stack_frame: InterruptStackFrame) {
+    println!("Caught IRQ2!");
+    println!("{:#?}", stack_frame);
+}
+
+pub extern "x86-interrupt" fn irq3_handler(stack_frame: InterruptStackFrame) {
+    println!("Caught IRQ3!");
+    println!("{:#?}", stack_frame);
+}
+
+pub extern "x86-interrupt" fn irq4_handler(stack_frame: InterruptStackFrame) {
+    println!("Caught IRQ4!");
+    println!("{:#?}", stack_frame);
+}
+
+pub extern "x86-interrupt" fn irq5_handler(stack_frame: InterruptStackFrame) {
+    println!("Caught IRQ5!");
+    println!("{:#?}", stack_frame);
+}
+
+pub extern "x86-interrupt" fn irq6_handler(stack_frame: InterruptStackFrame) {
+    println!("Caught IRQ6!");
+    println!("{:#?}", stack_frame);
+}
+
+pub extern "x86-interrupt" fn irq7_handler(stack_frame: InterruptStackFrame) {
+    println!("Caught IRQ7!");
     println!("{:#?}", stack_frame);
 }

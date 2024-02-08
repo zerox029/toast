@@ -4,16 +4,22 @@ use lazy_static::lazy_static;
 use spin::Mutex;
 use crate::{println, print};
 use crate::arch::x86_64::port_manager::Port;
-use crate::arch::x86_64::port_manager::ReadWriteStatus::{ReadOnly, ReadWrite, WriteOnly};
-use crate::drivers::ps2::PS2ControllerCommand::{DisableFirstPS2, DisableSecondPS2, EnableFirstPS2, EnableSecondPS2, ReadByteZero, TestFirstPS2, TestPS2Controller, TestSecondPS2, WriteToSecondPs2InputBuffer};
-use crate::drivers::ps2::PS2Device::{AncientATKeyboard, FiveButtonMouse, HundredTwentyTwoKeyKeyboard, JapaneseAKeyboard, JapaneseGKeyboard, JapanesePKeyboard, MF2Keyboard, MouseWithScrollWheel, NCDN97Keyboard, NCDSunLayoutKeyboard, ShortKeyboard, StandardPS2Mouse};
-use crate::drivers::ps2::PS2DeviceCommand::{ACK, DisableScanning, Identify, Reset, SelfTestSuccessful};
-use crate::drivers::ps2::PS2Port::{FirstPS2Port, SecondPS2Port};
+use crate::arch::x86_64::port_manager::ReadWriteStatus::*;
+use crate::drivers::ps2::PS2ControllerCommand::*;
+use crate::drivers::ps2::PS2Device::*;
+use crate::drivers::ps2::PS2DeviceCommand::*;
+use crate::drivers::ps2::PS2Port::*;
 use crate::utils::bitutils::is_nth_bit_set;
 
 const DATA_PORT_ADDRESS: u16 = 0x60;
 const STATUS_REGISTER_ADDRESS: u16 = 0x64;
 const COMMAND_REGISTER_ADDRESS: u16 = 0x64;
+
+lazy_static! {
+    pub static ref DATA_PORT: Mutex<Port<u8>> = Mutex::new(Port::new(DATA_PORT_ADDRESS, ReadWrite).into());
+    pub static ref STATUS_REGISTER: Mutex<Port<u8>> = Mutex::new(Port::new(STATUS_REGISTER_ADDRESS, ReadOnly));
+    pub static ref COMMAND_REGISTER: Mutex<Port<u8>> = Mutex::new(Port::new(COMMAND_REGISTER_ADDRESS, WriteOnly));
+}
 
 #[derive(Debug, Copy, Clone)]
 enum PS2Port {
@@ -77,12 +83,6 @@ impl fmt::Display for PS2Device {
     }
 }
 
-lazy_static! {
-    pub static ref DATA_PORT: Mutex<Port<u8>> = Mutex::new(Port::new(DATA_PORT_ADDRESS, ReadWrite).into());
-    pub static ref STATUS_REGISTER: Mutex<Port<u8>> = Mutex::new(Port::new(STATUS_REGISTER_ADDRESS, ReadOnly));
-    pub static ref COMMAND_REGISTER: Mutex<Port<u8>> = Mutex::new(Port::new(COMMAND_REGISTER_ADDRESS, WriteOnly));
-}
-
 pub fn init_ps2_controller() {
     println!("Attempting to initialized PS/2 driver...");
 
@@ -119,7 +119,7 @@ fn flush_output_buffer() {
 }
 
 fn set_config_byte() {
-    let mut config_byte = send_command_for_response(ReadByteZero);
+    let config_byte = send_command_for_response(ReadByteZero);
     update_config_byte(config_byte & !0b00100011);
 }
 
@@ -137,7 +137,7 @@ fn controller_self_test() {
 fn dual_channel_check() -> bool {
     COMMAND_REGISTER.lock().write(EnableSecondPS2 as u8).unwrap();
 
-    let mut config_byte = send_command_for_response(ReadByteZero);
+    let config_byte = send_command_for_response(ReadByteZero);
     let dual_channel_bit = config_byte & (1 << 5) == 1;
 
     // Disable second PS/2 port if dual channel
@@ -174,7 +174,7 @@ fn enable_devices(devices: (bool, bool)) {
     }
 
     // Enable interrupts
-    let mut config_byte = send_command_for_response(ReadByteZero);
+    let config_byte = send_command_for_response(ReadByteZero);
     COMMAND_REGISTER.lock().write(config_byte | byte_controller_bit_mask).unwrap();
 
     wait_for_input_buffer();
