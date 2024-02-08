@@ -4,32 +4,39 @@ use spin::Mutex;
 use crate::{println, print};
 use crate::arch::x86_64::port_manager::Port;
 use crate::arch::x86_64::port_manager::ReadWriteStatus::{ReadOnly, ReadWrite, WriteOnly};
+use crate::drivers::ps2::PS2ControllerCommands::{DisableFirstPS2, DisableSecondPS2, EnableFirstPS2, EnableSecondPS2, ReadByteZero, TestFirstPS2, TestPS2Controller, TestSecondPS2, WriteToSecondPs2InputBuffer};
+use crate::drivers::ps2::PS2Port::{FirstPS2Port, SecondPS2Port};
 use crate::utils::bitutils::is_nth_bit_set;
 
 const DATA_PORT_ADDRESS: u16 = 0x60;
 const STATUS_REGISTER_ADDRESS: u16 = 0x64;
 const COMMAND_REGISTER_ADDRESS: u16 = 0x64;
 
-bitflags! {
-    pub struct ConfigurationByteFlags: u8 {
-        const FIRST_PS2_PORT_INTERRUPT = 1 << 0;
-        const SECOND_PS2_PORT_INTERRUPT = 1 << 2;
-        const SYSTEM = 1 << 3;
-        const FIRST_PS2_PORT_CLOCK = 1 << 4;
-        const SECOND_PS2_PORT_CLOCK = 1 << 5;
-        const FIRST_PS2_PORT_TRANSLATION = 1 << 6;
-    }
+enum PS2Port {
+    FirstPS2Port,
+    SecondPS2Port,
+}
 
-    pub struct StatusRegisterFlags: u8 {
-        const OUTPUT_BUFFER_STATUS = 1 << 0;
-        const INPUT_BUFFER_STATUS = 1 << 1;
-        const SYSTEM = 1 << 2;
-        const COMMAND_DATA = 1 << 3;
-        const UNKNOWN = 1 << 4;
-        const UNKNOWN_2 = 1 << 5;
-        const TIME_OUT_ERROR = 1 << 6;
-        const PARITY_ERROR = 1 << 7;
-    }
+#[repr(u8)]
+enum PS2ControllerCommands {
+    ReadByteZero = 0x20,
+    WriteToByteZero = 0x60,
+    DisableSecondPS2 = 0xA7,
+    EnableSecondPS2 = 0xA8,
+    TestSecondPS2 = 0xA9,
+    TestPS2Controller = 0xAA,
+    TestFirstPS2 = 0xAB,
+    DiagnosticDumb = 0xAC,
+    DisableFirstPS2 = 0xAD,
+    EnableFirstPS2 = 0xAE,
+    ReadControllerInput = 0xC0,
+    CopyBitsZeroToThree = 0xC1,
+    CopyBitsFourToSeven = 0xC2,
+    ReadControllerOutput = 0xD0,
+    WriteToControllerOutput = 0xD1,
+    WriteToFirstPS2OutputBuffer = 0xD2,
+    WriteToSecondPS2OutputBuffer = 0xD3,
+    WriteToSecondPs2InputBuffer = 0xD4,
 }
 
 lazy_static! {
@@ -54,6 +61,8 @@ pub fn init_ps2_controller() {
     let devices = interface_test(is_dual_channel);
     enable_devices(devices);
     reset_devices(devices);
+
+    println!("Successfully initiated PS/2 drivers!");
 }
 
 fn check_ps2_controller_exists() -> bool {
@@ -61,8 +70,8 @@ fn check_ps2_controller_exists() -> bool {
 }
 
 fn disable_ps2_devices() {
-    COMMAND_REGISTER.lock().write(0xAD).unwrap();
-    COMMAND_REGISTER.lock().write(0xA7).unwrap();
+    COMMAND_REGISTER.lock().write(DisableFirstPS2 as u8).unwrap();
+    COMMAND_REGISTER.lock().write(DisableSecondPS2 as u8).unwrap();
 }
 
 fn flush_output_buffer() {
@@ -70,65 +79,40 @@ fn flush_output_buffer() {
 }
 
 fn set_config_byte() {
-    COMMAND_REGISTER.lock().write(0x20).unwrap();
-
-    wait_for_output_buffer();
-
-    let mut config_byte = DATA_PORT.lock().read().unwrap();
-    COMMAND_REGISTER.lock().write(config_byte & !0b00100011).unwrap();
-
-    wait_for_input_buffer();
-
-    DATA_PORT.lock().write(config_byte).unwrap();
-
-    wait_for_output_buffer();
-
-    DATA_PORT.lock().read().unwrap();
+    let mut config_byte = send_command_for_response(ReadByteZero);
+    update_config_byte(config_byte & !0b00100011);
 }
 
 fn controller_self_test() {
-    COMMAND_REGISTER.lock().write(0xAA).unwrap();
+    let config_byte = send_command_for_response(ReadByteZero);
 
-    wait_for_output_buffer();
-
-    let response = DATA_PORT.lock().read().unwrap();
+    let response = send_command_for_response(TestPS2Controller);
 
     assert_eq!(response, 0x55);
 
-    // TODO: Restore controller configuration byte for compatibility
+    // Resetting the config byte for compatibility with some computers
+    update_config_byte(config_byte);
 }
 
 fn dual_channel_check() -> bool {
-    COMMAND_REGISTER.lock().write(0xA8).unwrap();
+    COMMAND_REGISTER.lock().write(EnableSecondPS2 as u8).unwrap();
 
-    COMMAND_REGISTER.lock().write(0x20).unwrap();
-
-    wait_for_output_buffer();
-
-    let mut config_byte = DATA_PORT.lock().read().unwrap();
+    let mut config_byte = send_command_for_response(ReadByteZero);
     let dual_channel_bit = config_byte & (1 << 5) == 1;
 
     // Disable second PS/2 port if dual channel
     if !dual_channel_bit {
-        COMMAND_REGISTER.lock().write(0xA7).unwrap();
+        COMMAND_REGISTER.lock().write(DisableSecondPS2 as u8).unwrap();
     }
 
     !dual_channel_bit
 }
 
 fn interface_test(is_dual_channel: bool) -> (bool, bool){
-    COMMAND_REGISTER.lock().write(0xAB).unwrap();
-
-    wait_for_output_buffer();
-
-    let response = DATA_PORT.lock().read().unwrap();
+    let response = send_command_for_response(TestFirstPS2);
 
     if is_dual_channel {
-        COMMAND_REGISTER.lock().write(0xA9).unwrap();
-
-        wait_for_output_buffer();
-
-        let second_response = DATA_PORT.lock().read().unwrap();
+        let second_response = send_command_for_response(TestSecondPS2);
 
         return (response == 0, second_response == 0)
     }
@@ -140,21 +124,17 @@ fn enable_devices(devices: (bool, bool)) {
     let mut byte_controller_bit_mask = 0;
 
     if devices.0 {
-        COMMAND_REGISTER.lock().write(0xAE).unwrap();
+        COMMAND_REGISTER.lock().write(EnableFirstPS2 as u8).unwrap();
         byte_controller_bit_mask |= 0b00000001;
     }
 
     if devices.1 {
-        COMMAND_REGISTER.lock().write(0xA8).unwrap();
+        COMMAND_REGISTER.lock().write(EnableSecondPS2 as u8).unwrap();
         byte_controller_bit_mask |= 0b00000010;
     }
 
     // Enable interrupts
-    COMMAND_REGISTER.lock().write(0x20).unwrap();
-
-    wait_for_output_buffer();
-
-    let mut config_byte = DATA_PORT.lock().read().unwrap();
+    let mut config_byte = send_command_for_response(ReadByteZero);
     COMMAND_REGISTER.lock().write(config_byte | byte_controller_bit_mask).unwrap();
 
     wait_for_input_buffer();
@@ -164,44 +144,72 @@ fn enable_devices(devices: (bool, bool)) {
 
 fn reset_devices(devices: (bool, bool)) {
     if devices.0 {
-        while is_nth_bit_set(STATUS_REGISTER.lock().read().unwrap(), 1) {}
+        write_to_device(0xFF, FirstPS2Port);
 
-        DATA_PORT.lock().write(0xFF).unwrap();
-
-        while !is_nth_bit_set(STATUS_REGISTER.lock().read().unwrap(), 0) {}
-
-        let response = DATA_PORT.lock().read().unwrap();
-
+        let response = read_from_device(FirstPS2Port);
         assert_eq!(response, 0xFA);
 
-        let second_response = DATA_PORT.lock().read().unwrap();
-
+        let second_response = read_from_device(FirstPS2Port);
         assert_eq!(second_response, 0xAA);
     }
 
     if devices.1 {
-        COMMAND_REGISTER.lock().write(0xD4).unwrap();
+        write_to_device(0xFF, SecondPS2Port);
 
-        while is_nth_bit_set(STATUS_REGISTER.lock().read().unwrap(), 1) {}
-
-        DATA_PORT.lock().write(0xFF).unwrap();
-
-        while !is_nth_bit_set(STATUS_REGISTER.lock().read().unwrap(), 0) {}
-
-        let response = DATA_PORT.lock().read().unwrap();
-
+        let response = read_from_device(SecondPS2Port);
         assert_eq!(response, 0xFA);
 
-        let second_response = DATA_PORT.lock().read().unwrap();
-
+        let second_response = read_from_device(SecondPS2Port);
         assert_eq!(second_response, 0xAA);
     }
 }
 
+fn send_command_for_response(command: PS2ControllerCommands) -> u8 {
+    COMMAND_REGISTER.lock().write(command as u8).unwrap();
+
+    wait_for_output_buffer();
+
+    DATA_PORT.lock().read().unwrap()
+}
+
+fn update_config_byte(config_byte: u8) {
+    DATA_PORT.lock().write(config_byte).unwrap();
+
+    wait_for_output_buffer();
+
+    DATA_PORT.lock().read().unwrap();
+}
+
+fn write_to_device(data: u8, port: PS2Port) {
+    match port {
+        FirstPS2Port => {
+            while is_nth_bit_set(STATUS_REGISTER.lock().read().unwrap(), 1) {}
+
+            DATA_PORT.lock().write(data).unwrap();
+        },
+        SecondPS2Port => {
+            COMMAND_REGISTER.lock().write(WriteToSecondPs2InputBuffer as u8).unwrap();
+
+            while is_nth_bit_set(STATUS_REGISTER.lock().read().unwrap(), 1) {}
+
+            DATA_PORT.lock().write(0xFF).unwrap();
+        }
+    }
+}
+
+// TODO: Use interrupt method to avoid blocking the CPU
+fn read_from_device(port: PS2Port) -> u8 {
+    while !is_nth_bit_set(STATUS_REGISTER.lock().read().unwrap(), 0) {}
+
+    DATA_PORT.lock().read().unwrap()
+}
+
+// TODO: When multithreading, set a timeout here
 fn wait_for_output_buffer() {
     while STATUS_REGISTER.lock().read().unwrap() & (1 << 0) == 0 {}
 }
 
+// TODO: When multithreading, set a timeout here
 fn wait_for_input_buffer() {
     while STATUS_REGISTER.lock().read().unwrap() & (1 << 1) == 1 {}
 }
