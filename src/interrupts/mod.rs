@@ -1,5 +1,5 @@
 use core::arch::asm;
-use crate::arch::x86_64::port_manager::Port;
+use crate::arch::x86_64::port_manager::{io_wait, Port};
 use crate::arch::x86_64::port_manager::ReadWriteStatus::{ReadOnly, ReadWrite};
 use crate::interrupts::interrupt_descriptor_table::*;
 use crate::interrupts::interrupt_service_routines::*;
@@ -38,6 +38,11 @@ pub fn init_interrupts() {
     init_idt();
     map_handlers();
     remap_pic(0x20, 0x28);
+
+    unsafe {
+        asm!("sti;");
+    }
+
 }
 
 // Create the IDT and tell the CPU where to find it
@@ -74,34 +79,68 @@ fn map_handlers() {
     IDT.set_entry(IdtVector::HypervisorInjectionException, GateDescriptor::new(hypervisor_injection_exception_handler as u64));
     IDT.set_entry(IdtVector::VMMCommunicationException, GateDescriptor::new(vmm_communication_exception_handler as u64));
     IDT.set_entry(IdtVector::SecurityException, GateDescriptor::new(security_exception_handler as u64));
+
+    for i in (31..255) {
+        IDT.set_irq_entry(i, GateDescriptor::new(default_irq_handler as u64));
+    }
 }
 
 fn remap_pic(offset_one: u8, offset_two: u8) {
-    let mut master_pic: Port<u8> = Port::new(MASTER_PIC_DATA, ReadWrite);
-    let mut slave_pic: Port<u8> = Port::new(SLAVE_PIC_DATA, ReadWrite);
+    let mut master_pic_data: Port<u8> = Port::new(MASTER_PIC_DATA, ReadWrite);
+    let mut slave_pic_data: Port<u8> = Port::new(SLAVE_PIC_DATA, ReadWrite);
+    let mut master_pic_command: Port<u8> = Port::new(MASTER_PIC_COMMAND, ReadWrite);
+    let mut slave_pic_command: Port<u8> = Port::new(SLAVE_PIC_COMMAND, ReadWrite);
 
-    let master_pic_mask = master_pic.read().unwrap();
-    let slave_pic_mask = slave_pic.read().unwrap();
+    let master_pic_mask = master_pic_data.read().unwrap();
+    io_wait();
+    let slave_pic_mask = slave_pic_data.read().unwrap();
+    io_wait();
 
     // Start initialization sequence
-    master_pic.write(ICW1_INIT | ICW1_ICW4).unwrap();
-    slave_pic.write(ICW1_INIT | ICW1_ICW4).unwrap();
+    master_pic_command.write(ICW1_INIT | ICW1_ICW4).unwrap();
+    io_wait();
+    slave_pic_command.write(ICW1_INIT | ICW1_ICW4).unwrap();
+    io_wait();
 
     // PIC vector offset
-    master_pic.write(offset_one).unwrap();
-    slave_pic.write(offset_two).unwrap();
+    master_pic_data.write(offset_one).unwrap();
+    io_wait();
+    slave_pic_data.write(offset_two).unwrap();
+    io_wait();
 
     // Tell Master PIC that there is a slave PIC at IRQ2 (0000 0100)
-    master_pic.write(4).unwrap();
+    master_pic_data.write(4).unwrap();
+    io_wait();
 
     // Tell Slave PIC its cascade identity (0000 0010)
-    slave_pic.write(2).unwrap();
+    slave_pic_data.write(2).unwrap();
+    io_wait();
 
     // Have the PICs use 8086 mode (and not 8080 mode)
-    master_pic.write(ICW1_8086).unwrap();
-    slave_pic.write(ICW1_8086).unwrap();
+    master_pic_data.write(0x01).unwrap();
+    io_wait();
+    slave_pic_data.write(0x01).unwrap();
+    io_wait();
 
     // Restore the saved masks
-    master_pic.write(master_pic_mask).unwrap();
-    slave_pic.write(slave_pic_mask).unwrap();
+    master_pic_data.write(master_pic_mask).unwrap();
+    slave_pic_data.write(slave_pic_mask).unwrap();
+}
+
+fn irq_mask(irq_line: u8) {
+    let port: u16;
+    let value: u8;
+
+    if irq_line < 8 {
+        port = MASTER_PIC_COMMAND
+    }
+    else {
+        port = SLAVE_PIC_DATA;
+        let irq_line = irq_line - 8;
+    }
+
+    let mut pic: Port<u8> = Port::new(port, ReadWrite);
+
+    value = pic.read().unwrap() | (1 << irq_line);
+    pic.write(value).unwrap();
 }

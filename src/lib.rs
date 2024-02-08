@@ -12,6 +12,7 @@
 extern crate alloc;
 extern crate rlibc;
 
+use core::arch::asm;
 use core::panic::PanicInfo;
 use x86_64::registers::model_specific::Efer;
 use x86_64::registers::control::{Cr0, Cr0Flags, EferFlags};

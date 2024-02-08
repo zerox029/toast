@@ -84,7 +84,7 @@ lazy_static! {
 }
 
 pub fn init_ps2_controller() {
-    println!("Attempting to initialize PS/2 drivers...");
+    println!("Attempting to initialized PS/2 driver...");
 
     if !check_ps2_controller_exists() {
         println!("Could not find PS/2 controller...");
@@ -100,7 +100,7 @@ pub fn init_ps2_controller() {
     enable_devices(devices);
     reset_devices(devices);
 
-    println!("Successfully initialized PS/2 drivers!");
+    println!("Successfully initialized PS/2 driver!");
 
     println!("Detected {}", detect_device(FirstPS2Port));
 }

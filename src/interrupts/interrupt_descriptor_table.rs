@@ -101,6 +101,11 @@ impl InterruptDescriptorTable {
         entries[vector as usize] = entry;
     }
 
+    pub fn set_irq_entry(&self, vector: usize, entry: GateDescriptor) {
+        let mut entries = self.entries.lock();
+        entries[vector] = entry;
+    }
+
     pub fn get_address(&self) -> u64 {
         self.entries.lock().as_ptr() as u64
     }
