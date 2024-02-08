@@ -18,15 +18,16 @@ use x86_64::registers::control::{Cr0, Cr0Flags, EferFlags};
 use crate::acpi::init_acpi;
 use crate::interrupts::init_interrupts;
 use crate::memory::init_memory_modules;
+use crate::drivers::ps2::init_ps2_controller;
 
 pub mod vga_buffer;
 pub mod arch;
 pub mod memory;
 mod test_runner;
 mod interrupts;
-mod ps2;
 mod acpi;
 mod utils;
+mod drivers;
 
 #[no_mangle]
 pub extern fn _main(multiboot_information_address: usize) {
@@ -50,7 +51,7 @@ fn init(multiboot_information_address: usize) {
     let (mut allocator, mut active_page_table) = init_memory_modules(boot_info);
     init_interrupts();
     init_acpi(boot_info, &mut allocator, &mut active_page_table);
-    //init_ps2_controller();
+    init_ps2_controller();
 }
 
 fn print_memory_areas(multiboot_information_address: usize) {

@@ -1,7 +1,9 @@
 use core::arch::asm;
 use crate::arch::x86_64::port_manager::Port;
+use crate::arch::x86_64::port_manager::ReadWriteStatus::{ReadOnly, ReadWrite};
 use crate::interrupts::interrupt_descriptor_table::*;
 use crate::interrupts::interrupt_service_routines::*;
+use crate::{println, print};
 
 mod interrupt_descriptor_table;
 mod interrupt_service_routines;
@@ -75,31 +77,31 @@ fn map_handlers() {
 }
 
 fn remap_pic(offset_one: u8, offset_two: u8) {
-    let mut master_pic: Port<u8> = Port::new(MASTER_PIC_DATA);
-    let mut slave_pic: Port<u8> = Port::new(SLAVE_PIC_DATA);
+    let mut master_pic: Port<u8> = Port::new(MASTER_PIC_DATA, ReadWrite);
+    let mut slave_pic: Port<u8> = Port::new(SLAVE_PIC_DATA, ReadWrite);
 
-    let master_pic_mask = master_pic.read();
-    let slave_pic_mask = slave_pic.read();
+    let master_pic_mask = master_pic.read().unwrap();
+    let slave_pic_mask = slave_pic.read().unwrap();
 
     // Start initialization sequence
-    master_pic.write(ICW1_INIT | ICW1_ICW4);
-    slave_pic.write(ICW1_INIT | ICW1_ICW4);
+    master_pic.write(ICW1_INIT | ICW1_ICW4).unwrap();
+    slave_pic.write(ICW1_INIT | ICW1_ICW4).unwrap();
 
     // PIC vector offset
-    master_pic.write(offset_one);
-    slave_pic.write(offset_two);
+    master_pic.write(offset_one).unwrap();
+    slave_pic.write(offset_two).unwrap();
 
     // Tell Master PIC that there is a slave PIC at IRQ2 (0000 0100)
-    master_pic.write(4);
+    master_pic.write(4).unwrap();
 
     // Tell Slave PIC its cascade identity (0000 0010)
-    slave_pic.write(2);
+    slave_pic.write(2).unwrap();
 
     // Have the PICs use 8086 mode (and not 8080 mode)
-    master_pic.write(ICW1_8086);
-    slave_pic.write(ICW1_8086);
+    master_pic.write(ICW1_8086).unwrap();
+    slave_pic.write(ICW1_8086).unwrap();
 
     // Restore the saved masks
-    master_pic.write(master_pic_mask);
-    slave_pic.write(slave_pic_mask);
+    master_pic.write(master_pic_mask).unwrap();
+    slave_pic.write(slave_pic_mask).unwrap();
 }

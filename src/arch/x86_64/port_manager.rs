@@ -1,25 +1,39 @@
 use core::arch::asm;
 use core::marker::PhantomData;
 
+pub enum ReadWriteStatus {
+    ReadOnly,
+    WriteOnly,
+    ReadWrite,
+}
+
 pub struct Port<T: InOut> {
+    read_write_status: ReadWriteStatus,
     port: u16,
     phantom: PhantomData<T>,
 }
 
 impl<T: InOut> Port<T> {
-    pub fn new(port: u16) -> Port<T> {
+    pub fn new(port: u16, read_write_status: ReadWriteStatus) -> Port<T> {
         Port {
+            read_write_status,
             port,
             phantom: PhantomData,
         }
     }
 
-    pub fn read(&mut self) -> T {
-        unsafe { T::port_in(self.port) }
+    pub fn read(&mut self) -> Result<T, &str> {
+        match self.read_write_status {
+            ReadWriteStatus::WriteOnly => Err("Tried to read from a write only port..."),
+            _ => Ok(unsafe { T::port_in(self.port) })
+        }
     }
 
-    pub fn write(&mut self, value: T) {
-        unsafe { T::port_out(self.port, value); }
+    pub fn write(&mut self, value: T) -> Result<(), &str> {
+        match self.read_write_status {
+            ReadWriteStatus::ReadOnly => Err("Tried to write to a read only port..."),
+            _ => Ok(unsafe { T::port_out(self.port, value) })
+        }
     }
 }
 
@@ -40,7 +54,6 @@ impl InOut for u32 {
     unsafe fn port_in(port: u16) -> u32 { inl(port) }
     unsafe fn port_out(port: u16, value: u32) { outl(value, port); }
 }
-
 
 // Assembly wrappers
 pub unsafe fn inb(port: u16) -> u8 {
