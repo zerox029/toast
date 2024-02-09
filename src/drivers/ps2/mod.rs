@@ -149,10 +149,10 @@ impl PS2Device for GenericPS2Device {
 pub struct PS2ControllerDevices<T, S>(pub Option<T>, pub Option<S>);
 
 pub fn init_ps2_controller() -> (Option<Box<dyn PS2Device>>, Option<Box<dyn PS2Device>>) {
-    println!("Attempting to initialize PS/2 driver...");
+    println!("ps2: attempting to initialize ps/2 driver...");
 
     if !check_ps2_controller_exists() {
-        println!("Could not find PS/2 controller...");
+        println!("could not find PS/2 controller...");
         return (None, None);
     }
 
@@ -165,11 +165,11 @@ pub fn init_ps2_controller() -> (Option<Box<dyn PS2Device>>, Option<Box<dyn PS2D
     enable_devices(&devices);
     reset_devices(&devices);
 
-    println!("Successfully initialized PS/2 driver!");
+    println!("ps2: successfully initialized ps/2 driver!");
 
     let first_port_device = detect_device(&devices.0.unwrap());
 
-    println!("Detected {}", first_port_device.as_ref().unwrap().device_type());
+    println!("ps2: detected {}", first_port_device.as_ref().unwrap().device_type());
 
     (first_port_device, None)
 }

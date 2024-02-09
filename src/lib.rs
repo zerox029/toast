@@ -61,7 +61,6 @@ fn init(multiboot_information_address: usize) {
     init_acpi(boot_info, &mut allocator, &mut active_page_table);
 
     let ps2_devices = init_ps2_controller();
-    print!(">");
     if ps2_devices.0.is_some() {
         let device = ps2_devices.0.unwrap();
         match device.device_type() {
@@ -71,6 +70,8 @@ fn init(multiboot_information_address: usize) {
             _ => ()
         }
     }
+
+    print!(">");
 }
 
 fn print_memory_areas(multiboot_information_address: usize) {

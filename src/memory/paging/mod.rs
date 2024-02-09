@@ -169,7 +169,7 @@ impl InactivePageTable {
 }
 
 pub fn remap_kernel<A>(allocator: &mut A, boot_info: &BootInformation) -> ActivePageTable where A: FrameAllocator {
-    println!("Identity mapping kernel");
+    println!("mm: identity mapping kernel...");
     let mut temporary_page = TemporaryPage::new(Page { number: 0xcafebabe }, allocator);
 
     let mut active_table = unsafe { ActivePageTable::new() };
@@ -212,7 +212,7 @@ pub fn remap_kernel<A>(allocator: &mut A, boot_info: &BootInformation) -> Active
 
     let old_p4_page = Page::containing_address(old_table.p4_frame.start_address());
     active_table.unmap(old_p4_page, allocator);
-    println!("Set up guard page at {:#X}", old_p4_page.start_address());
+    println!("mm: set up guard page at {:#X}", old_p4_page.start_address());
 
     active_table
 }

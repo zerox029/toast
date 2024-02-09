@@ -36,7 +36,7 @@ pub enum CPUVendor {
 
 impl CPUInfo {
     pub fn get_current_cpu_info() -> CPUInfo {
-        println!("cpu: getting cpu info");
+        println!("cpu: getting cpu info...");
 
         unsafe {
             Self::get_brand();
