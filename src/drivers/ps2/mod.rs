@@ -99,19 +99,18 @@ pub trait PS2Device: Downcast {
 
     fn port(&self) -> PS2Port;
 
-    // TODO: Use IRQ to avoid blocking the CPU
     fn read_byte(&self) -> u8 {
-        while !is_nth_bit_set(STATUS_REGISTER.lock().read().unwrap(), 0) {}
+        while !is_nth_bit_set(STATUS_REGISTER.lock().read().unwrap() as usize, 0) {}
 
         DATA_PORT.lock().read().unwrap()
     }
 
-    fn write_byte(&self, command: PS2DeviceCommand) {
+    fn write_byte(&self, command: u8) {
         match self.port() {
             FirstPS2Port => {
-                while is_nth_bit_set(STATUS_REGISTER.lock().read().unwrap(), 1) {}
+                while is_nth_bit_set(STATUS_REGISTER.lock().read().unwrap() as usize, 1) {}
 
-                DATA_PORT.lock().write(command as u8).unwrap();
+                DATA_PORT.lock().write(command).unwrap();
 
                 let response = self.read_byte();
                 assert_eq!(response, ACK as u8);
@@ -119,9 +118,9 @@ pub trait PS2Device: Downcast {
             SecondPS2Port => {
                 COMMAND_REGISTER.lock().write(WriteToSecondPs2InputBuffer as u8).unwrap();
 
-                while is_nth_bit_set(STATUS_REGISTER.lock().read().unwrap(), 1) {}
+                while is_nth_bit_set(STATUS_REGISTER.lock().read().unwrap() as usize, 1) {}
 
-                DATA_PORT.lock().write(command as u8).unwrap();
+                DATA_PORT.lock().write(command).unwrap();
 
                 let response = self.read_byte();
                 assert_eq!(response, ACK as u8);
@@ -150,7 +149,7 @@ impl PS2Device for GenericPS2Device {
 pub struct PS2ControllerDevices<T, S>(pub Option<T>, pub Option<S>);
 
 pub fn init_ps2_controller() -> (Option<Box<dyn PS2Device>>, Option<Box<dyn PS2Device>>) {
-    println!("Attempting to initialized PS/2 driver...");
+    println!("Attempting to initialize PS/2 driver...");
 
     if !check_ps2_controller_exists() {
         println!("Could not find PS/2 controller...");
@@ -176,8 +175,8 @@ pub fn init_ps2_controller() -> (Option<Box<dyn PS2Device>>, Option<Box<dyn PS2D
 }
 
 
-// TODO
 fn check_ps2_controller_exists() -> bool {
+    // TODO: Since we use ACPIv1, the required data is not present in the FADT table, I'm not quite sure what to do of this situation
     true
 }
 
@@ -259,7 +258,7 @@ fn enable_devices(devices: &PS2ControllerDevices<GenericPS2Device, GenericPS2Dev
 fn reset_devices(devices: &PS2ControllerDevices<GenericPS2Device, GenericPS2Device>) {
     if devices.0.is_some() {
         let device = devices.0.as_ref().unwrap();
-        device.write_byte(Reset);
+        device.write_byte(Reset as u8);
 
         let second_response = device.read_byte();
         assert_eq!(second_response, SelfTestSuccessful as u8);
@@ -268,7 +267,7 @@ fn reset_devices(devices: &PS2ControllerDevices<GenericPS2Device, GenericPS2Devi
 
     if devices.1.is_some() {
         let device = devices.1.as_ref().unwrap();
-        device.write_byte(Reset);
+        device.write_byte(Reset as u8);
 
         let second_response = device.read_byte();
         assert_eq!(second_response, SelfTestSuccessful as u8);
@@ -277,8 +276,8 @@ fn reset_devices(devices: &PS2ControllerDevices<GenericPS2Device, GenericPS2Devi
 }
 
 fn detect_device(generic_device: &GenericPS2Device) -> Option<Box<dyn PS2Device>> {
-    generic_device.write_byte(Reset);
-    generic_device.write_byte(Identify);
+    generic_device.write_byte(Reset as u8);
+    generic_device.write_byte(Identify as u8);
 
     let first_byte = generic_device.read_byte();
     let second_byte = generic_device.read_byte();
@@ -288,7 +287,7 @@ fn detect_device(generic_device: &GenericPS2Device) -> Option<Box<dyn PS2Device>
 
     match first_byte {
         0xAB => match second_byte {
-            0x41 | 0xC1 => Some(Box::new(PS2Keyboard::from(generic_device.port()))),
+            0x41 | 0xC1 => Some(Box::new(PS2Keyboard::new(generic_device.port()))),
             _ => None
         },
         _ => None,

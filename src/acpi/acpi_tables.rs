@@ -1,6 +1,7 @@
 use alloc::borrow::ToOwned;
 use core::mem::size_of;
 use crate::utils::any_as_u8_slice;
+use crate::utils::bitutils::is_nth_bit_set;
 
 #[repr(C)]
 #[derive(Clone, Copy)]
@@ -146,6 +147,16 @@ pub struct FixedACPIDescriptionTable {
     x_pm_timer_block: GenericAddressStructure,
     x_gpe0_block: GenericAddressStructure,
     x_gpe1_block: GenericAddressStructure,
+}
+
+impl FixedACPIDescriptionTable {
+    pub fn from(address: u32) -> &'static FixedACPIDescriptionTable {
+        unsafe { &mut *(address as *mut FixedACPIDescriptionTable) }
+    }
+
+    pub fn check_for_ps2_controller(&self) -> bool {
+        is_nth_bit_set(self.boot_architecture_flags as usize, 1)
+    }
 }
 
 #[repr(C)]

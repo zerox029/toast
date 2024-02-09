@@ -169,6 +169,7 @@ impl InactivePageTable {
 }
 
 pub fn remap_kernel<A>(allocator: &mut A, boot_info: &BootInformation) -> ActivePageTable where A: FrameAllocator {
+    println!("Identity mapping kernel");
     let mut temporary_page = TemporaryPage::new(Page { number: 0xcafebabe }, allocator);
 
     let mut active_table = unsafe { ActivePageTable::new() };
@@ -187,7 +188,6 @@ pub fn remap_kernel<A>(allocator: &mut A, boot_info: &BootInformation) -> Active
             }
 
             assert_eq!(section.start_address() % PAGE_SIZE, 0, "sections need to be page aligned");
-            println!("Mapping kernel section at address: {:#X}, size: {:#X}", section.start_address(), section.size());
 
             let start_frame = Frame::containing_address(section.start_address());
             let end_frame = Frame::containing_address(section.end_address() - 1);

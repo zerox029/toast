@@ -18,6 +18,7 @@ use core::panic::PanicInfo;
 use x86_64::registers::model_specific::Efer;
 use x86_64::registers::control::{Cr0, Cr0Flags, EferFlags};
 use crate::acpi::init_acpi;
+use crate::cpuid::CPUInfo;
 use crate::interrupts::{INTERRUPT_CONTROLLER, InterruptController};
 use crate::memory::init_memory_modules;
 use crate::drivers::ps2::{init_ps2_controller};
@@ -32,6 +33,7 @@ mod interrupts;
 mod acpi;
 mod utils;
 mod drivers;
+mod cpuid;
 
 #[no_mangle]
 pub extern fn _main(multiboot_information_address: usize) {
@@ -44,6 +46,8 @@ fn init(multiboot_information_address: usize) {
     vga_buffer::clear_screen();
 
     println!("Toast version v0.0.1-x86_64");
+
+    let cpu_info = CPUInfo::get_current_cpu_info();
 
     let boot_info = unsafe{ arch::multiboot2::load(multiboot_information_address) };
 

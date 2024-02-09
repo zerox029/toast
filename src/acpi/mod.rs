@@ -5,7 +5,7 @@ use core::ops::DerefMut;
 use crate::acpi::root_system_descriptor_pointer::{find_rsdp, RSDP};
 use crate::arch::multiboot2::BootInformation;
 use crate::{println, print};
-use crate::acpi::acpi_tables::RootSystemDescriptorTable;
+use crate::acpi::acpi_tables::{FixedACPIDescriptionTable, RootSystemDescriptorTable};
 use crate::memory::Frame;
 use crate::memory::page_frame_allocator::PageFrameAllocator;
 use crate::memory::paging::ActivePageTable;
@@ -21,7 +21,8 @@ pub fn init_acpi(boot_info: &BootInformation, allocator: &mut PageFrameAllocator
     let rsdt = RootSystemDescriptorTable::from(rsdt_address);
     page_table.deref_mut().identity_map(Frame::containing_address(rsdt_address as usize), EntryFlags::PRESENT, allocator);
 
-    let fadt_address = rsdt.fadt_address();
+    let fadt_address = rsdt.fadt_address().expect("Could not find FADT address");
+    let fadt = FixedACPIDescriptionTable::from(fadt_address);
 
-    println!("Found FADT at address 0x{:X}", fadt_address.unwrap());
+    //println!("{}", fadt.check_for_ps2_controller());
 }

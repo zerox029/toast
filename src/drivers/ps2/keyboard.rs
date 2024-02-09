@@ -1,7 +1,9 @@
-use crate::drivers::ps2::{PS2Device, PS2DeviceType, PS2Port};
+use crate::drivers::ps2::{keyboard, PS2Device, PS2DeviceType, PS2Port};
 use crate::drivers::ps2::PS2DeviceType::MF2Keyboard;
 use crate::{println, print, vga_buffer};
+use crate::drivers::ps2::keyboard::Command::GetSetCurrentScancodeSet;
 
+#[repr(u8)]
 enum Command {
     SetLEDs = 0xED,
     Echo = 0xEE,
@@ -33,6 +35,12 @@ enum Response {
     KeyDetectionError2 = 0xFF,
 }
 
+enum ScanCodeSetId {
+    ScanCodeSet1,
+    ScanCodeSet2,
+    ScanCodeSet3,
+}
+
 const SCANCODE_SET_1: [char; 83] = [
     '\0', '1', '2', '3', '4', '5', '6', '7', '8', '9', '0', '-', '=', '\0',
     '\0', 'Q', 'W', 'E', 'R', 'T', 'Y', 'U', 'I', 'O', 'P', '[', ']', '\n',
@@ -56,11 +64,13 @@ pub struct PS2Keyboard {
     is_rcontrol: bool,
     is_lalt: bool,
     is_ralt: bool,
+
+    is_reading_extended_keycode: bool,
 }
 
 impl PS2Keyboard {
-    pub fn from(port: PS2Port) -> Self {
-        Self {
+    pub fn new(port: PS2Port) -> Self {
+        let keyboard = Self {
             port,
 
             is_caps_lock: false,
@@ -72,15 +82,19 @@ impl PS2Keyboard {
             is_lcontrol: false,
             is_rcontrol: false,
             is_lalt: false,
-            is_ralt: false
-        }
+            is_ralt: false,
+
+            is_reading_extended_keycode: false,
+        };
+
+        keyboard
     }
 
     pub fn read_key_input(&mut self) {
         let received_byte = self.read_byte() as usize;
 
         match received_byte {
-            0x54..=0x56 | 0x59..=0x80 => (), // Not mapped
+            0x54..=0x56 | 0x59..=0x80 => (), // Not mapped, maybe want to ask to resend last byte?
             0x01 => (), // Escape pressed,
             0x1C => (), // Enter pressed TODO
             0x3B..=0x44 | 0x57 | 0x58 => (), // Fn keys pressed
@@ -100,6 +114,12 @@ impl PS2Keyboard {
             0xB8 => self.is_lalt = false, // Left all pressed
             0xC5 => self.is_num_lock = false, // Num lock pressed
             0xC6 => self.is_scroll_lock = false, // Scroll lock pressed
+
+            0xE0 =>  {
+                self.is_reading_extended_keycode = true;
+                self.read_key_input();
+                self.is_reading_extended_keycode = false;
+            }, // E
 
             _ => if received_byte <= SCANCODE_SET_1.len() {
                 if self.is_caps() {

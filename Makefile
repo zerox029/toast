@@ -3,6 +3,7 @@ kernel := build/kernel-$(arch).bin
 iso := build/os-$(arch).iso
 target ?= $(arch)-toast
 rust_os := target/$(target)/debug/libtoast.a
+cpu_model := core2duo-v1
 
 linker_script := src/arch/$(arch)/linker.ld
 grub_cfg := src/arch/$(arch)/grub.cfg
@@ -18,16 +19,16 @@ clean:
 	@rm -r build
 
 run: $(iso)
-	@qemu-system-x86_64 -cdrom $(iso) -s
+	@qemu-system-x86_64 -cpu $(cpu_model) -cdrom $(iso) -s
 
 run-with-crash-info: $(iso)
-	@qemu-system-x86_64 -d int -no-reboot -cdrom $(iso) -s
+	@qemu-system-x86_64 -cpu $(cpu_model) -d int -no-reboot -cdrom $(iso) -s
 
 debug: $(iso)
-	@qemu-system-x86_64 -cdrom $(iso) -s -S
+	@qemu-system-x86_64 -cpu $(cpu_model) -cdrom $(iso) -s -S
 
 test: $(iso)
-	@qemu-system-x86_64 -cdrom $(iso) -s
+	@qemu-system-x86_64 -cpu $(cpu_model) -cdrom $(iso) -s
 
 gdb:
 	gdb $(kernel) -ex "target remote :1234"
