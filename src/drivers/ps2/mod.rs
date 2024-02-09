@@ -1,12 +1,17 @@
+pub mod keyboard;
+
+use alloc::boxed::Box;
 use core::fmt;
-use core::fmt::Formatter;
+use core::fmt::{Formatter, Debug};
+use downcast_rs::{Downcast, impl_downcast};
 use lazy_static::lazy_static;
 use spin::Mutex;
 use crate::{println, print};
 use crate::arch::x86_64::port_manager::Port;
 use crate::arch::x86_64::port_manager::ReadWriteStatus::*;
+use crate::drivers::ps2::keyboard::PS2Keyboard;
 use crate::drivers::ps2::PS2ControllerCommand::*;
-use crate::drivers::ps2::PS2Device::*;
+use crate::drivers::ps2::PS2DeviceType::*;
 use crate::drivers::ps2::PS2DeviceCommand::*;
 use crate::drivers::ps2::PS2Port::*;
 use crate::utils::bitutils::is_nth_bit_set;
@@ -62,7 +67,7 @@ enum PS2DeviceCommand {
 }
 
 #[derive(Debug, Copy, Clone)]
-enum PS2Device {
+pub enum PS2DeviceType {
     AncientATKeyboard,
     StandardPS2Mouse,
     MouseWithScrollWheel,
@@ -75,20 +80,81 @@ enum PS2Device {
     JapanesePKeyboard,
     JapaneseAKeyboard,
     NCDSunLayoutKeyboard,
+    Generic,
 }
 
-impl fmt::Display for PS2Device {
+impl fmt::Display for PS2DeviceType {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
         write!(f, "{:?}", self)
     }
 }
 
-pub fn init_ps2_controller() {
+#[derive(Debug, Copy, Clone)]
+pub struct GenericPS2Device {
+    port: PS2Port,
+}
+
+pub trait PS2Device: Downcast {
+    fn device_type(&self) -> PS2DeviceType;
+
+    fn port(&self) -> PS2Port;
+
+    // TODO: Use IRQ to avoid blocking the CPU
+    fn read_byte(&self) -> u8 {
+        while !is_nth_bit_set(STATUS_REGISTER.lock().read().unwrap(), 0) {}
+
+        DATA_PORT.lock().read().unwrap()
+    }
+
+    fn write_byte(&self, command: PS2DeviceCommand) {
+        match self.port() {
+            FirstPS2Port => {
+                while is_nth_bit_set(STATUS_REGISTER.lock().read().unwrap(), 1) {}
+
+                DATA_PORT.lock().write(command as u8).unwrap();
+
+                let response = self.read_byte();
+                assert_eq!(response, ACK as u8);
+            },
+            SecondPS2Port => {
+                COMMAND_REGISTER.lock().write(WriteToSecondPs2InputBuffer as u8).unwrap();
+
+                while is_nth_bit_set(STATUS_REGISTER.lock().read().unwrap(), 1) {}
+
+                DATA_PORT.lock().write(command as u8).unwrap();
+
+                let response = self.read_byte();
+                assert_eq!(response, ACK as u8);
+            }
+        }
+    }
+}
+impl_downcast!(PS2Device);
+
+impl Debug for dyn PS2Device {
+    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
+        todo!()
+    }
+}
+
+impl PS2Device for GenericPS2Device {
+    fn device_type(&self) -> PS2DeviceType {
+        Generic
+    }
+
+    fn port(&self) -> PS2Port {
+        self.port
+    }
+}
+
+pub struct PS2ControllerDevices<T, S>(pub Option<T>, pub Option<S>);
+
+pub fn init_ps2_controller() -> (Option<Box<dyn PS2Device>>, Option<Box<dyn PS2Device>>) {
     println!("Attempting to initialized PS/2 driver...");
 
     if !check_ps2_controller_exists() {
         println!("Could not find PS/2 controller...");
-        return;
+        return (None, None);
     }
 
     disable_ps2_devices();
@@ -97,14 +163,20 @@ pub fn init_ps2_controller() {
     controller_self_test();
     let is_dual_channel = dual_channel_check();
     let devices = interface_test(is_dual_channel);
-    enable_devices(devices);
-    reset_devices(devices);
+    enable_devices(&devices);
+    reset_devices(&devices);
 
     println!("Successfully initialized PS/2 driver!");
 
-    println!("Detected {}", detect_device(FirstPS2Port));
+    let first_port_device = detect_device(&devices.0.unwrap());
+
+    println!("Detected {}", first_port_device.as_ref().unwrap().device_type());
+
+    (first_port_device, None)
 }
 
+
+// TODO
 fn check_ps2_controller_exists() -> bool {
     true
 }
@@ -148,27 +220,29 @@ fn dual_channel_check() -> bool {
     !dual_channel_bit
 }
 
-fn interface_test(is_dual_channel: bool) -> (bool, bool){
-    let response = send_command_for_response(TestFirstPS2);
+fn interface_test(is_dual_channel: bool) -> PS2ControllerDevices<GenericPS2Device, GenericPS2Device> {
+    let first_response = send_command_for_response(TestFirstPS2);
+    let first_device = if first_response == 0 { Some(GenericPS2Device { port: FirstPS2Port }) } else { None };
 
     if is_dual_channel {
         let second_response = send_command_for_response(TestSecondPS2);
+        let second_device = if second_response == 0 { Some(GenericPS2Device { port: SecondPS2Port }) } else { None };
 
-        return (response == 0, second_response == 0)
+        return PS2ControllerDevices(first_device, second_device)
     }
 
-    (response == 0, false)
+    PS2ControllerDevices(first_device, None)
 }
 
-fn enable_devices(devices: (bool, bool)) {
-    let mut byte_controller_bit_mask = 0;
+fn enable_devices(devices: &PS2ControllerDevices<GenericPS2Device, GenericPS2Device>) {
+    let mut byte_controller_bit_mask = 0b00000000;
 
-    if devices.0 {
+    if devices.0.is_some() {
         COMMAND_REGISTER.lock().write(EnableFirstPS2 as u8).unwrap();
         byte_controller_bit_mask |= 0b00000001;
     }
 
-    if devices.1 {
+    if devices.1.is_some() {
         COMMAND_REGISTER.lock().write(EnableSecondPS2 as u8).unwrap();
         byte_controller_bit_mask |= 0b00000010;
     }
@@ -182,50 +256,42 @@ fn enable_devices(devices: (bool, bool)) {
     DATA_PORT.lock().write(config_byte).unwrap();
 }
 
-fn reset_devices(devices: (bool, bool)) {
-    if devices.0 {
-        write_to_device(Reset, FirstPS2Port);
+fn reset_devices(devices: &PS2ControllerDevices<GenericPS2Device, GenericPS2Device>) {
+    if devices.0.is_some() {
+        let device = devices.0.as_ref().unwrap();
+        device.write_byte(Reset);
 
-        let second_response = read_from_device(FirstPS2Port);
+        let second_response = device.read_byte();
         assert_eq!(second_response, SelfTestSuccessful as u8);
-        DATA_PORT.lock().read().unwrap(); // I honestly cannot figure out why this is necessary
+        DATA_PORT.lock().read().unwrap(); // I honestly cannot figure out why this is necessary, but it doesn't work without
     }
 
-    if devices.1 {
-        write_to_device(Reset, SecondPS2Port);
+    if devices.1.is_some() {
+        let device = devices.1.as_ref().unwrap();
+        device.write_byte(Reset);
 
-        let second_response = read_from_device(SecondPS2Port);
+        let second_response = device.read_byte();
         assert_eq!(second_response, SelfTestSuccessful as u8);
         DATA_PORT.lock().read().unwrap(); // Same as above
     }
 }
 
-fn detect_device(port: PS2Port) -> PS2Device {
-    write_to_device(Reset, port);
-    write_to_device(Identify, port);
+fn detect_device(generic_device: &GenericPS2Device) -> Option<Box<dyn PS2Device>> {
+    generic_device.write_byte(Reset);
+    generic_device.write_byte(Identify);
 
-    let first_byte = read_from_device(port);
-    let second_byte = read_from_device(port);
+    let first_byte = generic_device.read_byte();
+    let second_byte = generic_device.read_byte();
 
     DATA_PORT.lock().read().unwrap(); // Same as above
     DATA_PORT.lock().read().unwrap(); // Same as above
 
     match first_byte {
-        0x00 => StandardPS2Mouse,
-        0x03 => MouseWithScrollWheel,
-        0x04 => FiveButtonMouse,
         0xAB => match second_byte {
-            0x41 | 0xC1 => MF2Keyboard,
-            0x54 => ShortKeyboard,
-            0x85 => NCDN97Keyboard,
-            0x86 => HundredTwentyTwoKeyKeyboard,
-            0x90 => JapaneseGKeyboard,
-            0x91 => JapanesePKeyboard,
-            0x92 => JapaneseAKeyboard,
-            _ => panic!("Erroneous byte received")
+            0x41 | 0xC1 => Some(Box::new(PS2Keyboard::new(generic_device.port()))),
+            _ => None
         },
-        0xAC => NCDSunLayoutKeyboard,
-        _ => AncientATKeyboard,
+        _ => None,
     }
 }
 
@@ -244,36 +310,6 @@ fn update_config_byte(config_byte: u8) {
     wait_for_output_buffer();
 
     DATA_PORT.lock().read().unwrap();
-}
-
-fn write_to_device(command: PS2DeviceCommand, port: PS2Port) {
-    match port {
-        FirstPS2Port => {
-            while is_nth_bit_set(STATUS_REGISTER.lock().read().unwrap(), 1) {}
-
-            DATA_PORT.lock().write(command as u8).unwrap();
-
-            let response = read_from_device(SecondPS2Port);
-            assert_eq!(response, ACK as u8);
-        },
-        SecondPS2Port => {
-            COMMAND_REGISTER.lock().write(WriteToSecondPs2InputBuffer as u8).unwrap();
-
-            while is_nth_bit_set(STATUS_REGISTER.lock().read().unwrap(), 1) {}
-
-            DATA_PORT.lock().write(command as u8).unwrap();
-
-            let response = read_from_device(SecondPS2Port);
-            assert_eq!(response, ACK as u8);
-        }
-    }
-}
-
-// TODO: Use interrupt method to avoid blocking the CPU
-fn read_from_device(_port: PS2Port) -> u8 {
-    while !is_nth_bit_set(STATUS_REGISTER.lock().read().unwrap(), 0) {}
-
-    DATA_PORT.lock().read().unwrap()
 }
 
 // TODO: When multithreading, set a timeout here
