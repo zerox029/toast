@@ -105,6 +105,10 @@ pub trait PS2Device: Downcast {
         DATA_PORT.lock().read().unwrap()
     }
 
+    fn read_byte_from_interrupt(&self) -> u8 {
+        DATA_PORT.lock().read().unwrap()
+    }
+
     fn write_byte(&self, command: u8) {
         match self.port() {
             FirstPS2Port => {

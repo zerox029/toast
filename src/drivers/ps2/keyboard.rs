@@ -91,7 +91,7 @@ impl PS2Keyboard {
     }
 
     pub fn read_key_input(&mut self) {
-        let received_byte = self.read_byte() as usize;
+        let received_byte = self.read_byte_from_interrupt() as usize;
 
         match received_byte {
             0x54..=0x56 | 0x59..=0x80 => (), // Not mapped, maybe want to ask to resend last byte?
