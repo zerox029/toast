@@ -4,7 +4,6 @@ use spin::Mutex;
 use crate::arch::x86_64::port_manager::{io_wait, Port};
 use crate::arch::x86_64::port_manager::ReadWriteStatus::{ReadWrite, WriteOnly};
 use crate::drivers::ps2::keyboard::PS2Keyboard;
-use crate::drivers::ps2::PS2Device;
 use crate::interrupts::interrupt_descriptor_table::*;
 use crate::interrupts::interrupt_service_routines::*;
 
@@ -23,6 +22,12 @@ lazy_static! {
     static ref MASTER_PIC_DATA_PORT: Mutex<Port<u8>> = Mutex::new(Port::new(MASTER_PIC_DATA_ADDRESS, ReadWrite));
     static ref SLAVE_PIC_COMMAND_PORT: Mutex<Port<u8>> = Mutex::new(Port::new(SLAVE_PIC_COMMAND_ADDRESS, WriteOnly));
     static ref SLAVE_PIC_DATA_PORT: Mutex<Port<u8>> = Mutex::new(Port::new(SLAVE_PIC_DATA_ADDRESS, ReadWrite));
+
+    pub static ref INTERRUPT_CONTROLLER: Mutex<InterruptController> = Mutex::new(InterruptController {
+        master_pic_mask: 0xFF,
+        slave_pic_mask: 0xFF,
+        keyboard_device: None
+    });
 }
 
 #[repr(C, packed)]
@@ -50,7 +55,7 @@ pub struct InterruptController {
 }
 
 impl InterruptController {
-    pub fn init_interrupts() -> Self {
+    pub fn init_interrupts() {
         Self::init_idt();
         Self::map_handlers();
         Self::remap_pic(0x20, 0x28);
@@ -60,18 +65,11 @@ impl InterruptController {
         unsafe {
             asm!("sti;");
         };
-
-        Self {
-            master_pic_mask: 0xFF,
-            slave_pic_mask: 0xFF,
-
-            keyboard_device: None
-        }
     }
 
     pub fn enable_keyboard_interrupts(&mut self, keyboard_device: PS2Keyboard) {
         self.keyboard_device = Some(keyboard_device);
-        self.master_pic_mask |= 0b00000010;
+        self.master_pic_mask &= 0b11111101;
         Self::set_irq_masks(self.master_pic_mask, self.slave_pic_mask);
     }
 

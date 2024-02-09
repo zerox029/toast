@@ -10,23 +10,19 @@
 #![feature(abi_x86_interrupt)]
 #![feature(never_type)]
 
-#[macro_use]
 extern crate downcast_rs;
 extern crate alloc;
 extern crate rlibc;
 
-use core::any::{Any, TypeId};
-use core::mem;
 use core::panic::PanicInfo;
 use x86_64::registers::model_specific::Efer;
 use x86_64::registers::control::{Cr0, Cr0Flags, EferFlags};
 use crate::acpi::init_acpi;
-use crate::interrupts::{InterruptController};
+use crate::interrupts::{INTERRUPT_CONTROLLER, InterruptController};
 use crate::memory::init_memory_modules;
-use crate::drivers::ps2::{init_ps2_controller, PS2ControllerDevices};
+use crate::drivers::ps2::{init_ps2_controller};
 use crate::drivers::ps2::keyboard::PS2Keyboard;
 use crate::drivers::ps2::PS2DeviceType::*;
-use crate::drivers::ps2::PS2Device;
 
 pub mod vga_buffer;
 pub mod arch;
@@ -57,15 +53,16 @@ fn init(multiboot_information_address: usize) {
     }
 
     let (mut allocator, mut active_page_table) = init_memory_modules(boot_info);
-    let mut interrupt_controller = InterruptController::init_interrupts();
+    InterruptController::init_interrupts();
     init_acpi(boot_info, &mut allocator, &mut active_page_table);
 
     let ps2_devices = init_ps2_controller();
+    print!(">");
     if ps2_devices.0.is_some() {
         let device = ps2_devices.0.unwrap();
         match device.device_type() {
             MF2Keyboard => {
-                interrupt_controller.enable_keyboard_interrupts(*device.downcast::<PS2Keyboard>().unwrap())
+                INTERRUPT_CONTROLLER.lock().enable_keyboard_interrupts(*device.downcast::<PS2Keyboard>().unwrap())
             },
             _ => ()
         }

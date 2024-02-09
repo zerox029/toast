@@ -119,6 +119,19 @@ impl Writer {
             self.buffer().chars[row][col].write(blank);
         }
     }
+
+    fn clear_char(&mut self) {
+        let row = BUFFER_HEIGHT - 1;
+        let col = self.column_position - 1;
+        let color_code = self.color_code;
+
+        self.buffer().chars[row][col].write(ScreenChar {
+            ascii_character: b' ',
+            color_code,
+        });
+
+        self.column_position -= 1;
+    }
 }
 
 impl fmt::Write for Writer {
@@ -153,4 +166,8 @@ pub fn clear_screen() {
     for _ in 0..BUFFER_HEIGHT {
         println!("");
     }
+}
+
+pub fn backspace() {
+    WRITER.lock().clear_char();
 }

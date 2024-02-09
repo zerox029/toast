@@ -26,8 +26,8 @@ lazy_static! {
     pub static ref COMMAND_REGISTER: Mutex<Port<u8>> = Mutex::new(Port::new(COMMAND_REGISTER_ADDRESS, WriteOnly));
 }
 
-#[derive(Debug, Copy, Clone)]
-enum PS2Port {
+#[derive(Debug, Copy, Clone, Eq, PartialEq)]
+pub enum PS2Port {
     FirstPS2Port,
     SecondPS2Port,
 }
@@ -57,7 +57,7 @@ enum PS2ControllerCommand {
 
 #[repr(u8)]
 #[derive(Debug, Copy, Clone)]
-enum PS2DeviceCommand {
+pub enum PS2DeviceCommand {
     SelfTestSuccessful = 0xAA,
     Identify = 0xF2,
     EnableScanning = 0xF4,
@@ -132,7 +132,7 @@ pub trait PS2Device: Downcast {
 impl_downcast!(PS2Device);
 
 impl Debug for dyn PS2Device {
-    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
+    fn fmt(&self, _f: &mut Formatter<'_>) -> fmt::Result {
         todo!()
     }
 }
@@ -288,7 +288,7 @@ fn detect_device(generic_device: &GenericPS2Device) -> Option<Box<dyn PS2Device>
 
     match first_byte {
         0xAB => match second_byte {
-            0x41 | 0xC1 => Some(Box::new(PS2Keyboard::new(generic_device.port()))),
+            0x41 | 0xC1 => Some(Box::new(PS2Keyboard::from(generic_device.port()))),
             _ => None
         },
         _ => None,
