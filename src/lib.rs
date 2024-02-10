@@ -24,7 +24,8 @@ use crate::memory::init_memory_modules;
 use crate::drivers::ps2::{init_ps2_controller};
 use crate::drivers::ps2::keyboard::PS2Keyboard;
 use crate::drivers::ps2::PS2DeviceType::*;
-use crate::task::executor::Executor;
+use crate::task::executor::{Executor, SimpleExecutor};
+use crate::task::keyboard::print_key_inputs;
 use crate::task::Task;
 
 pub mod vga_buffer;
@@ -62,31 +63,24 @@ fn init(multiboot_information_address: usize) {
     InterruptController::init_interrupts();
     init_acpi(boot_info, &mut allocator, &mut active_page_table);
 
+    let mut executor = Executor::new();
+
     let ps2_devices = init_ps2_controller();
     if ps2_devices.0.is_some() {
         let device = ps2_devices.0.unwrap();
         match device.device_type() {
             MF2Keyboard => {
-                INTERRUPT_CONTROLLER.lock().enable_keyboard_interrupts(*device.downcast::<PS2Keyboard>().unwrap())
+                let keyboard: PS2Keyboard = *device.downcast::<PS2Keyboard>().unwrap();
+                executor.spawn(Task::new(print_key_inputs(keyboard)));
+                INTERRUPT_CONTROLLER.lock().enable_keyboard_interrupts();
             },
             _ => ()
         }
     }
 
-    let mut executor = Executor::new();
-    executor.spawn(Task::new(example_task()));
-    executor.run();
-
     print!(">");
-}
 
-async fn async_number() -> u32 {
-    42
-}
-
-async fn example_task() {
-    let number = async_number().await;
-    println!("async number: {}", number);
+    executor.run();
 }
 
 fn print_memory_areas(multiboot_information_address: usize) {

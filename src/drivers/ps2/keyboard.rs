@@ -1,7 +1,6 @@
-use crate::drivers::ps2::{keyboard, PS2Device, PS2DeviceType, PS2Port};
+use crate::drivers::ps2::{DATA_PORT, PS2Device, PS2DeviceType, PS2Port};
 use crate::drivers::ps2::PS2DeviceType::MF2Keyboard;
 use crate::{println, print, vga_buffer};
-use crate::drivers::ps2::keyboard::Command::GetSetCurrentScancodeSet;
 
 #[repr(u8)]
 enum Command {
@@ -90,10 +89,13 @@ impl PS2Keyboard {
         keyboard
     }
 
-    pub fn read_key_input(&mut self) {
-        let received_byte = self.read_byte_from_interrupt() as usize;
+    /// Directly reading a byte from the device port, this should only be called from an IRS to ensure that data is present
+    pub fn interrupt_read_byte() -> u8 {
+        DATA_PORT.lock().read().unwrap()
+    }
 
-        match received_byte {
+    pub fn print_key_input(&mut self, scancode: u8) {
+        match scancode {
             0x54..=0x56 | 0x59..=0x80 => (), // Not mapped, maybe want to ask to resend last byte?
             0x01 => (), // Escape pressed,
             0x1C => (), // Enter pressed TODO
@@ -117,16 +119,16 @@ impl PS2Keyboard {
 
             0xE0 =>  {
                 self.is_reading_extended_keycode = true;
-                self.read_key_input();
+                //self.print_key_input();
                 self.is_reading_extended_keycode = false;
             }, // E
 
-            _ => if received_byte <= SCANCODE_SET_1.len() {
+            _ => if scancode as usize <= SCANCODE_SET_1.len() {
                 if self.is_caps() {
-                    print!("{}", SCANCODE_SET_1[received_byte - 1]);
+                    print!("{}", SCANCODE_SET_1[scancode as usize - 1]);
                 }
                 else {
-                    print!("{}", SCANCODE_SET_1[received_byte - 1].to_lowercase());
+                    print!("{}", SCANCODE_SET_1[scancode as usize - 1].to_lowercase());
                 }
             }
         }

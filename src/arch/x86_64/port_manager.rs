@@ -14,7 +14,7 @@ pub struct Port<T: InOut> {
 }
 
 impl<T: InOut> Port<T> {
-    pub fn new(port: u16, read_write_status: ReadWriteStatus) -> Port<T> {
+    pub const fn new(port: u16, read_write_status: ReadWriteStatus) -> Port<T> {
         Port {
             read_write_status,
             port,

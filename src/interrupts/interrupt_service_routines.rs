@@ -2,7 +2,9 @@ use core::arch::asm;
 use core::fmt;
 use core::fmt::Formatter;
 use crate::{println, print};
-use crate::interrupts::{INTERRUPT_CONTROLLER, MASTER_PIC_COMMAND_PORT, PIC_EOI};
+use crate::drivers::ps2::keyboard::{PS2Keyboard};
+use crate::interrupts::{MASTER_PIC_COMMAND_PORT, PIC_EOI};
+use crate::task::keyboard::add_scancode;
 
 pub type HandlerFuncWithoutErrCode = extern "x86-interrupt" fn(InterruptStackFrame);
 pub type HandlerFuncWithErrCode = extern "x86-interrupt" fn(InterruptStackFrame, error_code: u64);
@@ -150,10 +152,8 @@ pub extern "x86-interrupt" fn irq0_handler(stack_frame: InterruptStackFrame) {
 }
 
 pub extern "x86-interrupt" fn irq1_handler() {
-    unsafe { INTERRUPT_CONTROLLER.force_unlock() }; // I really don't like this, but I can't find another way
-    if INTERRUPT_CONTROLLER.lock().keyboard_device.is_some() {
-        INTERRUPT_CONTROLLER.lock().keyboard_device.as_mut().unwrap().read_key_input();
-    }
+    let scancode = PS2Keyboard::interrupt_read_byte();
+    add_scancode(scancode);
 
     MASTER_PIC_COMMAND_PORT.lock().write(PIC_EOI).unwrap();
 }

@@ -4,7 +4,6 @@ use alloc::boxed::Box;
 use core::fmt;
 use core::fmt::{Formatter, Debug};
 use downcast_rs::{Downcast, impl_downcast};
-use lazy_static::lazy_static;
 use spin::Mutex;
 use crate::{println, print};
 use crate::arch::x86_64::port_manager::Port;
@@ -20,11 +19,9 @@ const DATA_PORT_ADDRESS: u16 = 0x60;
 const STATUS_REGISTER_ADDRESS: u16 = 0x64;
 const COMMAND_REGISTER_ADDRESS: u16 = 0x64;
 
-lazy_static! {
-    pub static ref DATA_PORT: Mutex<Port<u8>> = Mutex::new(Port::new(DATA_PORT_ADDRESS, ReadWrite).into());
-    pub static ref STATUS_REGISTER: Mutex<Port<u8>> = Mutex::new(Port::new(STATUS_REGISTER_ADDRESS, ReadOnly));
-    pub static ref COMMAND_REGISTER: Mutex<Port<u8>> = Mutex::new(Port::new(COMMAND_REGISTER_ADDRESS, WriteOnly));
-}
+pub static DATA_PORT: Mutex<Port<u8>> = Mutex::new(Port::new(DATA_PORT_ADDRESS, ReadWrite));
+pub static STATUS_REGISTER: Mutex<Port<u8>> = Mutex::new(Port::new(STATUS_REGISTER_ADDRESS, ReadOnly));
+pub static COMMAND_REGISTER: Mutex<Port<u8>> = Mutex::new(Port::new(COMMAND_REGISTER_ADDRESS, WriteOnly));
 
 #[derive(Debug, Copy, Clone, Eq, PartialEq)]
 pub enum PS2Port {
@@ -99,13 +96,10 @@ pub trait PS2Device: Downcast {
 
     fn port(&self) -> PS2Port;
 
+    /// Reading a byte from the device port, this method waits for the corresponding bit before doing anything
     fn read_byte(&self) -> u8 {
         while !is_nth_bit_set(STATUS_REGISTER.lock().read().unwrap() as usize, 0) {}
 
-        DATA_PORT.lock().read().unwrap()
-    }
-
-    fn read_byte_from_interrupt(&self) -> u8 {
         DATA_PORT.lock().read().unwrap()
     }
 

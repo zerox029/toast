@@ -1,5 +1,5 @@
 use core::arch::asm;
-use lazy_static::lazy_static;
+use core::sync::atomic::{compiler_fence, Ordering};
 use spin::Mutex;
 use crate::arch::x86_64::port_manager::{io_wait, Port};
 use crate::arch::x86_64::port_manager::ReadWriteStatus::{ReadWrite, WriteOnly};
@@ -18,18 +18,15 @@ const SLAVE_PIC_DATA_ADDRESS: u16 = 0xA1;
 
 const PIC_EOI: u8 = 0x20;
 
-lazy_static! {
-    static ref MASTER_PIC_COMMAND_PORT: Mutex<Port<u8>> = Mutex::new(Port::new(MASTER_PIC_COMMAND_ADDRESS, WriteOnly));
-    static ref MASTER_PIC_DATA_PORT: Mutex<Port<u8>> = Mutex::new(Port::new(MASTER_PIC_DATA_ADDRESS, ReadWrite));
-    static ref SLAVE_PIC_COMMAND_PORT: Mutex<Port<u8>> = Mutex::new(Port::new(SLAVE_PIC_COMMAND_ADDRESS, WriteOnly));
-    static ref SLAVE_PIC_DATA_PORT: Mutex<Port<u8>> = Mutex::new(Port::new(SLAVE_PIC_DATA_ADDRESS, ReadWrite));
+static MASTER_PIC_COMMAND_PORT: Mutex<Port<u8>> = Mutex::new(Port::new(MASTER_PIC_COMMAND_ADDRESS, WriteOnly));
+static MASTER_PIC_DATA_PORT: Mutex<Port<u8>> = Mutex::new(Port::new(MASTER_PIC_DATA_ADDRESS, ReadWrite));
+static SLAVE_PIC_COMMAND_PORT: Mutex<Port<u8>> = Mutex::new(Port::new(SLAVE_PIC_COMMAND_ADDRESS, WriteOnly));
+static SLAVE_PIC_DATA_PORT: Mutex<Port<u8>> = Mutex::new(Port::new(SLAVE_PIC_DATA_ADDRESS, ReadWrite));
 
-    pub static ref INTERRUPT_CONTROLLER: Mutex<InterruptController> = Mutex::new(InterruptController {
-        master_pic_mask: 0xFF,
-        slave_pic_mask: 0xFF,
-        keyboard_device: None
-    });
-}
+pub static INTERRUPT_CONTROLLER: Mutex<InterruptController> = Mutex::new(InterruptController {
+    master_pic_mask: 0xFF,
+    slave_pic_mask: 0xFF,
+});
 
 #[repr(C, packed)]
 pub struct InterruptDescriptorTableRegister {
@@ -50,9 +47,6 @@ impl InterruptDescriptorTableRegister {
 pub struct InterruptController {
     master_pic_mask: u8,
     slave_pic_mask: u8,
-
-    // IRQ devices
-    keyboard_device: Option<PS2Keyboard>,
 }
 
 impl InterruptController {
@@ -63,14 +57,11 @@ impl InterruptController {
 
         Self::set_irq_masks(0xFF, 0xFF);
 
-        unsafe {
-            asm!("sti;");
-        };
+        Self::enable_external_interrupts()
     }
 
-    pub fn enable_keyboard_interrupts(&mut self, keyboard_device: PS2Keyboard) {
+    pub fn enable_keyboard_interrupts(&mut self) {
         println!("ps2: enabling keyboard input");
-        self.keyboard_device = Some(keyboard_device);
         self.master_pic_mask &= 0b11111101;
         Self::set_irq_masks(self.master_pic_mask, self.slave_pic_mask);
     }
@@ -164,5 +155,20 @@ impl InterruptController {
     fn set_irq_masks(master_mask: u8, slave_mask: u8) {
         MASTER_PIC_DATA_PORT.lock().write(master_mask).unwrap();
         SLAVE_PIC_DATA_PORT.lock().write(slave_mask).unwrap();
+    }
+
+    pub fn enable_external_interrupts() {
+        compiler_fence(Ordering::Acquire);
+        unsafe { asm!("sti"); }
+    }
+
+    pub fn enable_external_interrupts_and_hlt() {
+        compiler_fence(Ordering::Acquire);
+        unsafe { asm!("sti; hlt;"); }
+    }
+
+    pub fn disable_external_interrupts() {
+        compiler_fence(Ordering::Acquire);
+        unsafe { asm!("cli"); }
     }
 }
