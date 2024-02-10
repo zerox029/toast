@@ -59,7 +59,7 @@ pub enum PS2DeviceCommand {
     Identify = 0xF2,
     EnableScanning = 0xF4,
     DisableScanning = 0xF5,
-    ACK = 0xFA,
+    Ack = 0xFA,
     Reset = 0xFF,
 }
 
@@ -111,7 +111,7 @@ pub trait PS2Device: Downcast {
                 DATA_PORT.lock().write(command).unwrap();
 
                 let response = self.read_byte();
-                assert_eq!(response, ACK as u8);
+                assert_eq!(response, Ack as u8);
             },
             SecondPS2Port => {
                 COMMAND_REGISTER.lock().write(WriteToSecondPs2InputBuffer as u8).unwrap();
@@ -121,7 +121,7 @@ pub trait PS2Device: Downcast {
                 DATA_PORT.lock().write(command).unwrap();
 
                 let response = self.read_byte();
-                assert_eq!(response, ACK as u8);
+                assert_eq!(response, Ack as u8);
             }
         }
     }
@@ -144,9 +144,9 @@ impl PS2Device for GenericPS2Device {
     }
 }
 
-pub struct PS2ControllerDevices<T, S>(pub Option<T>, pub Option<S>);
+pub type PS2DeviceOption = Option<Box<dyn PS2Device>>;
 
-pub fn init_ps2_controller() -> (Option<Box<dyn PS2Device>>, Option<Box<dyn PS2Device>>) {
+pub fn init_ps2_controller() -> (PS2DeviceOption, PS2DeviceOption) {
     println!("ps2: attempting to initialize ps/2 driver...");
 
     if !check_ps2_controller_exists() {
@@ -207,7 +207,7 @@ fn dual_channel_check() -> bool {
     COMMAND_REGISTER.lock().write(EnableSecondPS2 as u8).unwrap();
 
     let config_byte = send_command_for_response(ReadByteZero);
-    let dual_channel_bit = config_byte & (1 << 5) == 1;
+    let dual_channel_bit = is_nth_bit_set(config_byte as usize, 5);
 
     // Disable second PS/2 port if dual channel
     if !dual_channel_bit {
@@ -217,7 +217,7 @@ fn dual_channel_check() -> bool {
     !dual_channel_bit
 }
 
-fn interface_test(is_dual_channel: bool) -> PS2ControllerDevices<GenericPS2Device, GenericPS2Device> {
+fn interface_test(is_dual_channel: bool) -> (Option<GenericPS2Device>, Option<GenericPS2Device>) {
     let first_response = send_command_for_response(TestFirstPS2);
     let first_device = if first_response == 0 { Some(GenericPS2Device { port: FirstPS2Port }) } else { None };
 
@@ -225,13 +225,13 @@ fn interface_test(is_dual_channel: bool) -> PS2ControllerDevices<GenericPS2Devic
         let second_response = send_command_for_response(TestSecondPS2);
         let second_device = if second_response == 0 { Some(GenericPS2Device { port: SecondPS2Port }) } else { None };
 
-        return PS2ControllerDevices(first_device, second_device)
+        return (first_device, second_device)
     }
 
-    PS2ControllerDevices(first_device, None)
+    (first_device, None)
 }
 
-fn enable_devices(devices: &PS2ControllerDevices<GenericPS2Device, GenericPS2Device>) {
+fn enable_devices(devices: &(Option<GenericPS2Device>, Option<GenericPS2Device>)) {
     let mut byte_controller_bit_mask = 0b00000000;
 
     if devices.0.is_some() {
@@ -253,7 +253,7 @@ fn enable_devices(devices: &PS2ControllerDevices<GenericPS2Device, GenericPS2Dev
     DATA_PORT.lock().write(config_byte).unwrap();
 }
 
-fn reset_devices(devices: &PS2ControllerDevices<GenericPS2Device, GenericPS2Device>) {
+fn reset_devices(devices: &(Option<GenericPS2Device>, Option<GenericPS2Device>)) {
     if devices.0.is_some() {
         let device = devices.0.as_ref().unwrap();
         device.write_byte(Reset as u8);
@@ -273,7 +273,7 @@ fn reset_devices(devices: &PS2ControllerDevices<GenericPS2Device, GenericPS2Devi
     }
 }
 
-fn detect_device(generic_device: &GenericPS2Device) -> Option<Box<dyn PS2Device>> {
+fn detect_device(generic_device: &GenericPS2Device) -> PS2DeviceOption {
     generic_device.write_byte(Reset as u8);
     generic_device.write_byte(Identify as u8);
 
@@ -311,10 +311,10 @@ fn update_config_byte(config_byte: u8) {
 
 // TODO: When multithreading, set a timeout here
 fn wait_for_output_buffer() {
-    while STATUS_REGISTER.lock().read().unwrap() & (1 << 0) == 0 {}
+    while !is_nth_bit_set(STATUS_REGISTER.lock().read().unwrap() as usize, 0) {}
 }
 
 // TODO: When multithreading, set a timeout here
 fn wait_for_input_buffer() {
-    while STATUS_REGISTER.lock().read().unwrap() & (1 << 1) == 1 {}
+    while is_nth_bit_set(STATUS_REGISTER.lock().read().unwrap() as usize, 1) {}
 }

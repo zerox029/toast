@@ -230,10 +230,10 @@ pub struct ACPINewRSDP {
 pub struct NetworkingInformation {
     pub typ: TagType,   // 16
     pub size: u32,
-    pub dhcp_ack: DHCPACK,
+    pub dhcp_ack: DhcpAck,
 }
 #[repr(C)]
-pub struct DHCPACK {
+pub struct DhcpAck {
     // TODO
 }
 

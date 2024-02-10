@@ -32,7 +32,7 @@ struct BrandStringResponse {
 }
 
 pub enum CPUVendor {
-    AMD,
+    Amd,
     Intel,
 }
 
@@ -68,7 +68,7 @@ impl CPUInfo {
         let vendor_string = str::from_utf8(any_as_u8_slice(&vendor_response)).unwrap();
 
         match vendor_string {
-            "AuthenticAMD" => CPUVendor::AMD,
+            "AuthenticAMD" => CPUVendor::Amd,
             "GenuineIntel" => CPUVendor::Intel,
             _ => panic!("Unsupported CPU"),
         }
@@ -80,9 +80,7 @@ impl CPUInfo {
         asm!("mov eax, 0x1; cpuid;");
         asm!("mov {:e}, edx", out(reg) edx, options(nomem, nostack, preserves_flags));
 
-        let apic = is_nth_bit_set(edx as usize, 9);
-
-        apic
+        is_nth_bit_set(edx as usize, 9)
     }
 
     pub unsafe fn print_brand(&self) {

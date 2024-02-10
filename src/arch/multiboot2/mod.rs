@@ -10,8 +10,7 @@ pub struct BootInformation {
 }
 
 pub unsafe fn load(multiboot_information_address: usize) -> &'static BootInformation {
-    let boot_info = &*(multiboot_information_address as *const BootInformation);
-    boot_info
+    &*(multiboot_information_address as *const BootInformation)
 }
 
 impl BootInformation {

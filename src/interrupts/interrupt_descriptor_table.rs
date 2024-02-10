@@ -71,7 +71,7 @@ impl GateDescriptor {
         }
     }
 
-    pub fn new(handler_address: u64) -> Self {
+    pub fn new(handler_address: usize) -> Self {
         let segment: u16;
         unsafe { asm!("mov {0:x}, cs", out(reg) segment, options(nostack, nomem)) };
 

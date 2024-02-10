@@ -8,6 +8,7 @@ use crate::memory::heap_allocator::fixed_size_block_allocator::FixedSizeBlockAll
 use crate::memory::paging::mapper::Mapper;
 use crate::memory::paging::{Page, VirtualAddress};
 use crate::memory::paging::entry::EntryFlags;
+use crate::{println, print};
 
 pub const HEAP_START: usize = 0x4444_4444_0000;
 pub const HEAP_SIZE: usize = 100 * 1024; // 100 KiB
@@ -54,6 +55,8 @@ pub fn init_heap<A>(mapper: &mut Mapper, frame_allocator: &mut A) where A: Frame
     unsafe {
         ALLOCATOR.lock().init(HEAP_START, HEAP_START);
     }
+
+    println!("mm: heap starts at 0x{:X}", HEAP_START);
 }
 
 // TODO: Setup custom test framework

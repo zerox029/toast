@@ -54,13 +54,13 @@ impl EntryFlags {
 
         if section.flags().contains(ElfSectionHeaderFlags::ALLOCATED) {
             // section is loaded to memory
-            flags = flags | EntryFlags::PRESENT;
+            flags |= EntryFlags::PRESENT;
         }
         if section.flags().contains(ElfSectionHeaderFlags::WRITABLE) {
-            flags = flags | EntryFlags::WRITABLE;
+            flags |= EntryFlags::WRITABLE;
         }
         if !section.flags().contains(ElfSectionHeaderFlags::EXECUTABLE) {
-            flags = flags | EntryFlags::NO_EXECUTE;
+            flags |= EntryFlags::NO_EXECUTE;
         }
 
         flags

@@ -1,7 +1,7 @@
 use crate::arch::multiboot2::BootInformation;
 use crate::utils::any_as_u8_slice;
 
-pub enum RSDP {
+pub enum Rsdp {
     V1(&'static RootSystemDescriptorPointerV1),
     V2(&'static RootSystemDescriptorPointerV2),
 }
@@ -44,39 +44,32 @@ trait RootSystemDescriptorPointer {}
 impl RootSystemDescriptorPointer for RootSystemDescriptorPointerV1 {}
 impl RootSystemDescriptorPointer for RootSystemDescriptorPointerV2 {}
 
-pub fn find_rsdp(boot_information: &BootInformation) -> Result<RSDP, &'static str> {
-    let rsdp_v2 = match boot_information.acpi_new_rsdp() {
-        Some(rsdp) => Some(&rsdp.rsdp_v2),
-        None => None
-    };
+pub fn find_rsdp(boot_information: &BootInformation) -> Result<Rsdp, &'static str> {
+    let rsdp_v2 = boot_information.acpi_new_rsdp().map(|rsdp| &rsdp.rsdp_v2);
 
-    // V1
-    if rsdp_v2.is_none() {
-        let rsdp_v1 = match boot_information.acpi_old_rsdp() {
-            Some(rsdp) => Some(&rsdp.rsdp_v1),
-            None => None
-        };
-
-        if rsdp_v1.is_none() {
-            return Err("ACPI RSDP tag is required...")
-        }
-
-        let rsdp_v1 = rsdp_v1.unwrap();
-
-        if !validate_rsdp_checksum(rsdp_v1) {
-            return Err("Checksum validation failed...")
-        }
-
-        Ok(RSDP::V1(rsdp_v1))
-    }
     // V2
-    else {
-        if !validate_rsdp_checksum(rsdp_v2.unwrap()) {
+    if let Some(rsdp) = rsdp_v2 {
+        if !validate_rsdp_checksum(rsdp) {
             return Err("Checksum validation failed...")
         }
 
         // technically should be reading xsdt, but I don't think it really matters, and Toast uses V1 anyway
-        Ok(RSDP::V2(rsdp_v2.unwrap()))
+        Ok(Rsdp::V2(rsdp))
+    }
+    // V1
+    else {
+        let rsdp_v1 = boot_information.acpi_old_rsdp().map(|rsdp| &rsdp.rsdp_v1);
+
+        if let Some(rsdp) = rsdp_v1 {
+            if !validate_rsdp_checksum(rsdp) {
+                return Err("Checksum validation failed...")
+            }
+
+            Ok(Rsdp::V1(rsdp))
+        }
+        else {
+            Err("ACPI RSDP tag is required...")
+        }
     }
 }
 

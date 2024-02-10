@@ -26,7 +26,7 @@ impl Page {
     /// Returns the page containing a virtual address
     pub fn containing_address(address: VirtualAddress) -> Page {
         // Checking that the sign extension bits correspond to the 47th bit
-        assert!(address < 0x0000_8000_0000_0000 || address >= 0xffff_8000_0000_0000, "Invalid address: 0x{:x}", address);
+        assert!(!(0x0000_8000_0000_0000..0xffff_8000_0000_0000).contains(&address), "Invalid address: 0x{:x}", address);
 
         Page { number: address / PAGE_SIZE }
     }
@@ -52,7 +52,7 @@ impl Page {
         (self.number >> 9) & 0o777
     }
     fn p1_index(&self) -> usize {
-        (self.number >> 0) & 0o777
+        self.number & 0o777
     }
 }
 
@@ -66,7 +66,7 @@ impl Iterator for PageIter {
 
     fn next(&mut self) -> Option<Page> {
         if self.start <= self.end {
-            let page = self.start.clone();
+            let page = self.start;
             self.start.number += 1;
             Some(page)
         }

@@ -78,7 +78,7 @@ pub fn init_memory_modules(boot_information: &BootInformation) -> (PageFrameAllo
                                                                       multiboot_start, multiboot_end,
                                                                       memory_map.entries());
 
-    let mut active_page_table = remap_kernel(&mut frame_allocator, &boot_information);
+    let mut active_page_table = remap_kernel(&mut frame_allocator, boot_information);
     init_heap(active_page_table.deref_mut(), &mut frame_allocator);
 
     test_heap();

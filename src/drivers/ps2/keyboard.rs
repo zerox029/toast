@@ -27,7 +27,7 @@ enum Response {
     KeyDetectionError = 0x00,
     SelfTestPassed = 0xAA,
     Echo = 0xEE,
-    ACK = 0xFA,
+    Ack = 0xFA,
     SelfTestFailed = 0xFC,
     SelfTestFailed2 = 0xFD,
     Resend = 0xFE,
@@ -69,7 +69,7 @@ pub struct PS2Keyboard {
 
 impl PS2Keyboard {
     pub fn new(port: PS2Port) -> Self {
-        let keyboard = Self {
+        Self {
             port,
 
             is_caps_lock: false,
@@ -84,9 +84,7 @@ impl PS2Keyboard {
             is_ralt: false,
 
             is_reading_extended_keycode: false,
-        };
-
-        keyboard
+        }
     }
 
     /// Directly reading a byte from the device port, this should only be called from an IRS to ensure that data is present

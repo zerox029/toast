@@ -32,7 +32,10 @@ impl<T: InOut> Port<T> {
     pub fn write(&mut self, value: T) -> Result<(), &str> {
         match self.read_write_status {
             ReadWriteStatus::ReadOnly => Err("Tried to write to a read only port..."),
-            _ => Ok(unsafe { T::port_out(self.port, value) })
+            _ => {
+                unsafe { T::port_out(self.port, value) };
+                Ok(())
+            }
         }
     }
 }
