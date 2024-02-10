@@ -18,12 +18,14 @@ use core::panic::PanicInfo;
 use x86_64::registers::model_specific::Efer;
 use x86_64::registers::control::{Cr0, Cr0Flags, EferFlags};
 use crate::acpi::init_acpi;
-use crate::cpuid::CPUInfo;
+use crate::cpuid::CPU_INFO;
 use crate::interrupts::{INTERRUPT_CONTROLLER, InterruptController};
 use crate::memory::init_memory_modules;
 use crate::drivers::ps2::{init_ps2_controller};
 use crate::drivers::ps2::keyboard::PS2Keyboard;
 use crate::drivers::ps2::PS2DeviceType::*;
+use crate::task::executor::Executor;
+use crate::task::Task;
 
 pub mod vga_buffer;
 pub mod arch;
@@ -34,6 +36,7 @@ mod acpi;
 mod utils;
 mod drivers;
 mod cpuid;
+mod task;
 
 #[no_mangle]
 pub extern fn _main(multiboot_information_address: usize) {
@@ -46,8 +49,7 @@ fn init(multiboot_information_address: usize) {
     vga_buffer::clear_screen();
 
     println!("Toast version v0.0.1-x86_64");
-
-    let cpu_info = CPUInfo::get_current_cpu_info();
+    unsafe { CPU_INFO.lock().print_brand(); }
 
     let boot_info = unsafe{ arch::multiboot2::load(multiboot_information_address) };
 
@@ -71,7 +73,20 @@ fn init(multiboot_information_address: usize) {
         }
     }
 
+    let mut executor = Executor::new();
+    executor.spawn(Task::new(example_task()));
+    executor.run();
+
     print!(">");
+}
+
+async fn async_number() -> u32 {
+    42
+}
+
+async fn example_task() {
+    let number = async_number().await;
+    println!("async number: {}", number);
 }
 
 fn print_memory_areas(multiboot_information_address: usize) {

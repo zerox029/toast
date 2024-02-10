@@ -3,7 +3,7 @@ kernel := build/kernel-$(arch).bin
 iso := build/os-$(arch).iso
 target ?= $(arch)-toast
 rust_os := target/$(target)/debug/libtoast.a
-cpu_model := core2duo-v1
+cpu_model := Nehalem-v2
 
 linker_script := src/arch/$(arch)/linker.ld
 grub_cfg := src/arch/$(arch)/grub.cfg

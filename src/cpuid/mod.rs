@@ -1,8 +1,16 @@
+use alloc::borrow::ToOwned;
+use alloc::string::String;
 use core::str;
 use core::arch::asm;
+use lazy_static::lazy_static;
+use spin::Mutex;
 use crate::{println, print};
-use crate::cpuid::CPUVendor::{AMD, Intel};
-use crate::utils::any_as_u8_slice;
+use crate::utils::{any_as_u8_slice};
+use crate::utils::bitutils::is_nth_bit_set;
+
+lazy_static! {
+    pub static ref CPU_INFO: Mutex<CPUInfo> = Mutex::new(CPUInfo::get_current_cpu_info());
+}
 
 struct CPUVendorResponse {
     ebx: u32,
@@ -25,13 +33,14 @@ struct BrandStringResponse {
     edx3: u32,
 }
 
-pub struct CPUInfo {
-    vendor: CPUVendor
-}
-
 pub enum CPUVendor {
     AMD,
     Intel,
+}
+
+pub struct CPUInfo {
+    pub vendor: CPUVendor,
+    pub is_apic_supported: bool
 }
 
 impl CPUInfo {
@@ -39,10 +48,9 @@ impl CPUInfo {
         println!("cpu: getting cpu info...");
 
         unsafe {
-            Self::get_brand();
-
             Self {
                 vendor: Self::get_vendor(),
+                is_apic_supported: Self::get_apic_support(),
             }
         }
     }
@@ -62,13 +70,24 @@ impl CPUInfo {
         let vendor_string = str::from_utf8(any_as_u8_slice(&vendor_response)).unwrap();
 
         match vendor_string {
-            "AuthenticAMD" => AMD,
-            "GenuineIntel" => Intel,
+            "AuthenticAMD" => CPUVendor::AMD,
+            "GenuineIntel" => CPUVendor::Intel,
             _ => panic!("Unsupported CPU"),
         }
     }
 
-    unsafe fn get_brand() {
+    unsafe fn get_apic_support() -> bool {
+        let edx: u32;
+
+        asm!("mov eax, 0x1; cpuid;");
+        asm!("mov {:e}, edx", out(reg) edx, options(nomem, nostack, preserves_flags));
+
+        let apic = is_nth_bit_set(edx as usize, 9);
+
+        apic
+    }
+
+    pub unsafe fn print_brand(&self) {
         let eax: u32;
         let ebx: u32;
         let ecx: u32;
@@ -103,8 +122,8 @@ impl CPUInfo {
         asm!("mov {:e}, edx", out(reg) edx3, options(nomem, nostack, preserves_flags));
 
         let brand_response = BrandStringResponse { eax, ebx, ecx, edx, eax2, ebx2, ecx2, edx2, eax3, ebx3, ecx3, edx3, };
-        let brand_string = str::from_utf8(any_as_u8_slice(&brand_response)).unwrap();
+        let brand_string= str::from_utf8(any_as_u8_slice(&brand_response)).unwrap();
 
-        println!("cpu: {}", brand_string);
+        println!("{}", brand_string);
     }
 }
