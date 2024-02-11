@@ -1,5 +1,8 @@
 use core::ops::DerefMut;
+use spin::Mutex;
 use crate::arch::multiboot2::BootInformation;
+use crate::arch::x86_64::port_manager::Port;
+use crate::arch::x86_64::port_manager::ReadWriteStatus::ReadWrite;
 use crate::memory::page_frame_allocator::PageFrameAllocator;
 use crate::memory::paging::{ActivePageTable, PhysicalAddress};
 

@@ -59,9 +59,9 @@ fn init(multiboot_information_address: usize) {
 
     let (mut allocator, mut active_page_table) = init_memory_modules(boot_info);
     InterruptController::init_interrupts();
-    init_acpi(boot_info, &mut allocator, &mut active_page_table);
+    //init_acpi(boot_info, &mut allocator, &mut active_page_table); // TODO: Fix this
 
-    drivers::pci::init();
+    drivers::ahci::init(&mut allocator, &mut active_page_table);
 
     let ps2_devices = init_ps2_controller();
     let mut executor = Executor::new();

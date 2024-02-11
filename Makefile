@@ -4,12 +4,20 @@ iso := build/os-$(arch).iso
 target ?= $(arch)-toast
 rust_os := target/$(target)/debug/libtoast.a
 cpu_model := Nehalem-v2
+disk_img := build/toast-disk.img
 
 linker_script := src/arch/$(arch)/linker.ld
 grub_cfg := src/arch/$(arch)/grub.cfg
 assembly_source_files := $(wildcard src/arch/$(arch)/*.asm)
 assembly_object_files := $(patsubst src/arch/$(arch)/%.asm, \
 	build/arch/$(arch)/%.o, $(assembly_source_files))
+
+qemu_flags := -s \
+			  -cpu $(cpu_model) \
+			  -cdrom $(iso) \
+			  -drive id=disk,file=$(disk_img),if=none \
+			  -device ahci,id=ahci \
+			  -device ide-hd,drive=disk,bus=ahci.0
 
 .PHONY: all clean run iso kernel
 
@@ -19,16 +27,13 @@ clean:
 	@rm -r build
 
 run: $(iso)
-	@qemu-system-x86_64 -cpu $(cpu_model) -cdrom $(iso) -s
+	@qemu-system-x86_64 $(qemu_flags)
 
 run-with-crash-info: $(iso)
-	@qemu-system-x86_64 -cpu $(cpu_model) -d int -no-reboot -cdrom $(iso) -s
+	@qemu-system-x86_64 $(qemu_flags) -d int -no-reboot
 
 debug: $(iso)
-	@qemu-system-x86_64 -cpu $(cpu_model) -cdrom $(iso) -s -S
-
-test: $(iso)
-	@qemu-system-x86_64 -cpu $(cpu_model) -cdrom $(iso) -s
+	@qemu-system-x86_64 $(qemu_flags) -S
 
 gdb:
 	gdb $(kernel) -ex "target remote :1234"
