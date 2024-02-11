@@ -4,14 +4,14 @@
 ## Initialisation
 - [x] Enable interrupts, DMA, and memory space access in the PCI command register
 - [x] Memory map BAR 5 register as uncacheable.
-- [ ] Perform BIOS/OS handoff (if the bit in the extended capabilities is set)
-- [ ] Reset controller
-- [ ] Register IRQ handler, using interrupt line given in the PCI register. This interrupt line may be shared with other devices, so the usual implications of this apply.
-- [ ] Enable AHCI mode and interrupts in global host control register.
-- [ ] Read capabilities registers. Check 64-bit DMA is supported if you need it.
+- [x] Perform BIOS/OS handoff (if the bit in the extended capabilities is set)
+- [x] Reset controller
+- [x] Register IRQ handler, using interrupt line given in the PCI register. This interrupt line may be shared with other devices, so the usual implications of this apply.
+- [x] Enable AHCI mode and interrupts in global host control register.
+- [x] Read capabilities registers. Check 64-bit DMA is supported if you need it.
 - [ ] For all the implemented ports:
-    - [ ] Allocate physical memory for its command list, the received FIS, and its command tables. Make sure the command tables are 128 byte aligned.
-    - [ ] Memory map these as uncacheable.
+    - [x] Allocate physical memory for its command list, the received FIS, and its command tables. Make sure the command tables are 128 byte aligned.
+    - [x] Memory map these as uncacheable.
     - [ ] Set command list and received FIS address registers (and upper registers, if supported).
     - [ ] Setup command list entries to point to the corresponding command table.
     - [ ] Reset the port.

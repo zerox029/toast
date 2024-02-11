@@ -63,6 +63,11 @@ impl PCIDevice {
         config_read_word(self.bus, self.device, function, 0x24)
     }
 
+    pub fn interrupt_line(&self, function: u8) -> u8 {
+        let header_field = config_read_word(self.bus, self.device, function, 0x3C);
+        (header_field & 0x000000FF) as u8
+    }
+
     pub fn check_device(&self) -> Vec<PCIDevice> {
         let mut devices = Vec::new();
 

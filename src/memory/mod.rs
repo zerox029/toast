@@ -30,7 +30,7 @@ impl Frame {
         self.number * PAGE_SIZE
     }
 
-    fn range_inclusive(start: Frame, end: Frame) -> FrameIter {
+    pub fn range_inclusive(start: Frame, end: Frame) -> FrameIter {
         FrameIter {
             start,
             end
@@ -42,7 +42,7 @@ impl Frame {
     }
 }
 
-struct FrameIter {
+pub struct FrameIter {
     start: Frame,
     end: Frame
 }

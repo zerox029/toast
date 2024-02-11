@@ -1,3 +1,5 @@
+// https://www.intel.com/content/dam/www/public/us/en/documents/technical-specifications/serial-ata-ahci-spec-rev1-3-1.pdf
+
 use core::ops::DerefMut;
 use crate::{println, print};
 use crate::drivers::pci::{find_all_pci_devices, PCIDevice};
@@ -5,6 +7,7 @@ use crate::memory::Frame;
 use crate::memory::page_frame_allocator::PageFrameAllocator;
 use crate::memory::paging::{ActivePageTable};
 use crate::memory::paging::entry::EntryFlags;
+use crate::utils::bitutils::is_nth_bit_set;
 
 enum FisType {
     RegH2D      = 0x27, // Register FIS - host to device
@@ -139,8 +142,76 @@ struct FisDmaSetup {
 
 #[derive(Debug)]
 struct HbaMemoryRegisters {
-    test: u128,
-    test2: u128
+    // 0x00 - 0x2B, Generic Host Control
+    cap: u32,
+    ghc: u32,
+    is: u32,
+    pi: u32,
+    vs: u32,
+    ccc_ctl: u32,
+    ccc_pts: u32,
+    em_loc: u32,
+    em_ctl: u32,
+    cap2: u32,
+    bohc: u32,
+
+    // 0x2C - 0x9F, Reserved
+    rsv: [u8; 0xA0-0x2C],
+
+    // 0xA0 - 0xFF, Vendor specific registers
+    vendor: [u8; 0x100-0xA1],
+
+    // 0x100 - 0x17F, Port 0 port control registers
+    port_registers: [PortRegisters; 32],
+}
+
+#[derive(Debug)]
+struct PortRegisters {
+    clb: u32,
+    clbu: u32,
+    fb: u32,
+    fbu: u32,
+    is: u32,
+    ie: u32,
+    cmd: u32,
+
+    rsv: u32,
+
+    tfd: u32,
+    sig: u32,
+    ssts: u32,
+    sctl: u32,
+    serr: u32,
+    sact: u32,
+    ci: u32,
+    sntf: u32,
+    fbs: u32,
+    devslp: u32,
+
+    // 0x48 - 6F, Reserved
+    rsv2: [u8; 0x70-0x48],
+
+    // 0x70 - 7F, Vendor Specific
+    vendor: [u8; 0x80-0x71],
+}
+
+type CommandList = [CommandHeader; 32];
+
+#[derive(Debug)]
+struct CommandHeader {
+    dw0: u32,
+    dw1: u32,
+    dw2: u32,
+    dw3: u32,
+    dw4_reserved: u32,
+    dw5_reserved: u32,
+    dw6_reserved: u32,
+    dw7_reserved: u32,
+}
+
+#[derive(Debug)]
+struct CommandTable {
+
 }
 
 pub fn init(allocator: &mut PageFrameAllocator, active_page_table: &mut ActivePageTable) {
@@ -155,11 +226,59 @@ pub fn init(allocator: &mut PageFrameAllocator, active_page_table: &mut ActivePa
 
     // Memory map BAR 5 register as uncacheable.
     let base_memory = ahci_controller.bar5(0);
-    active_page_table.deref_mut().identity_map(Frame::containing_address(base_memory as usize), EntryFlags::NO_CACHE, allocator);
+    let start_frame = Frame::containing_address(base_memory as usize);
+    let end_frame = Frame::containing_address(base_memory as usize + core::mem::size_of::<HbaMemoryRegisters>() - 1);
+    for frame in Frame::range_inclusive(start_frame, end_frame) {
+        active_page_table.deref_mut().identity_map(frame, EntryFlags::WRITABLE | EntryFlags::NO_CACHE, allocator);
+    }
 
     // Perform BIOS/OS handoff (if the bit in the extended capabilities is set)
-    let hba = unsafe { &*(base_memory as *const HbaMemoryRegisters) };
-    println!("{:b}", hba.test);
+    let hba = unsafe { &mut *(base_memory as *mut HbaMemoryRegisters) };
+    if is_nth_bit_set(hba.cap2 as usize, 0) {
+        let mut bohc_address = base_memory + 0x4;
+        let bohc_pointer = bohc_address as *mut u32;
+
+        unsafe { core::ptr::write(bohc_pointer, hba.bohc | 2) };
+    }
+
+    // Reset controller
+    let mut ghc_address = base_memory + 0x4;
+    let ghc_pointer = ghc_address as *mut u32;
+
+    unsafe { core::ptr::write(ghc_pointer, hba.ghc | 1) };
+
+    // Register IRQ handler, using interrupt line given in the PCI register.
+    println!("Connected to IRQ{}", ahci_controller.interrupt_line(0));
+
+    // Enable AHCI mode and interrupts in global host control register.
+    unsafe { core::ptr::write(ghc_pointer, hba.ghc | 0x80000002) };
+
+    // Read capabilities registers. Check 64-bit DMA is supported if you need it.
+    println!("Supports 64bit addressing {}", is_nth_bit_set(hba.cap as usize, 31));
+
+    for port in 0..=(hba.port_registers.len() - 1) {
+        if is_nth_bit_set(hba.pi as usize, port) {
+            port_setup(allocator, active_page_table, &hba.port_registers[port]);
+        }
+    }
+}
+
+fn port_setup(allocator: &mut PageFrameAllocator, active_page_table: &mut ActivePageTable, port_registers: &PortRegisters) {
+    // Allocate physical memory for the command list, the received FIS, and its command tables. Make sure the command tables are 128 byte aligned.
+    // Memory map these as uncacheable.
+    let command_list_address = (port_registers.clb as u64) | ((port_registers.clbu as u64) << 32);
+    active_page_table.deref_mut().identity_map(Frame::containing_address(command_list_address as usize), EntryFlags::WRITABLE | EntryFlags::NO_CACHE, allocator);
+
+    let command_list = unsafe { &*(command_list_address as *const CommandList) };
+    command_list.iter().for_each(|command_header| {
+        let command_table_address = (command_header.dw2 as u64) | ((command_header.dw3 as u64) << 32);
+        active_page_table.deref_mut().identity_map(Frame::containing_address(command_table_address as usize), EntryFlags::WRITABLE | EntryFlags::NO_CACHE, allocator);
+    });
+
+
+    let fis_address = (port_registers.fb as u64) | ((port_registers.fbu as u64) << 32);
+    active_page_table.deref_mut().identity_map(Frame::containing_address(fis_address as usize), EntryFlags::WRITABLE | EntryFlags::NO_CACHE, allocator);
+
 }
 
 fn is_ahci_controller(device: &PCIDevice) -> bool {
