@@ -97,6 +97,14 @@ impl Mapper {
         self.map_to(page, frame, flags, allocator);
     }
 
+    /// Same method as above but does not crash if the page was already mapped
+    pub fn identity_map_if_unmapped<A>(&mut self, frame: Frame, flags: EntryFlags, allocator: &mut A) where A: FrameAllocator {
+        let page = Page::containing_address(frame.start_address());
+        if self.check_is_unmapped(page, allocator) {
+            self.map_to(page, frame, flags, allocator);
+        }
+    }
+
     /// Unmaps the given page and adds all freed frames to the given
     /// `FrameAllocator`.
     pub fn unmap<A>(&mut self, page: Page, _allocator: &mut A)
@@ -119,7 +127,7 @@ impl Mapper {
         // allocator.deallocate_frame(frame);
     }
 
-    pub fn check_is_mapped<A>(&mut self, page: Page, allocator: &mut A) -> bool where A: FrameAllocator {
+    fn check_is_unmapped<A>(&mut self, page: Page, allocator: &mut A) -> bool where A: FrameAllocator {
         let p4 = self.p4_mut();
         let p3 = p4.next_table_create(page.p4_index(), allocator);
         let p2 = p3.next_table_create(page.p3_index(), allocator);

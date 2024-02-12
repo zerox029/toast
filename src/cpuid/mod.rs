@@ -120,6 +120,6 @@ impl CPUInfo {
         let brand_response = BrandStringResponse { eax, ebx, ecx, edx, eax2, ebx2, ecx2, edx2, eax3, ebx3, ecx3, edx3, };
         let brand_string= str::from_utf8(any_as_u8_slice(&brand_response)).unwrap();
 
-        println!("{}", brand_string);
+        println!("cpu: {}", brand_string);
     }
 }

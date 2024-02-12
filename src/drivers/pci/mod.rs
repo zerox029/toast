@@ -5,6 +5,8 @@ use crate::arch::x86_64::port_manager::ReadWriteStatus::ReadWrite;
 use crate::{println, print};
 use crate::utils::bitutils::is_nth_bit_set;
 
+pub mod ahci;
+
 const CONFIG_ADDRESS: u16 = 0xCF8;
 const CONFIG_DATA: u16 = 0xCFC;
 

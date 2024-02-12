@@ -12,7 +12,7 @@
 - [ ] For all the implemented ports:
     - [x] Allocate physical memory for its command list, the received FIS, and its command tables. Make sure the command tables are 128 byte aligned.
     - [x] Memory map these as uncacheable.
-    - [ ] Set command list and received FIS address registers (and upper registers, if supported).
+    - [x] Set command list and received FIS address registers (and upper registers, if supported).
     - [ ] Setup command list entries to point to the corresponding command table.
     - [ ] Reset the port.
     - [ ] Start command list processing with the port's command register.

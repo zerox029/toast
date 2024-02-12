@@ -9,6 +9,7 @@
 #![feature(const_mut_refs)]
 #![feature(abi_x86_interrupt)]
 #![feature(never_type)]
+#![feature(new_uninit)]
 
 extern crate downcast_rs;
 extern crate alloc;
@@ -61,7 +62,7 @@ fn init(multiboot_information_address: usize) {
     InterruptController::init_interrupts();
     //init_acpi(boot_info, &mut allocator, &mut active_page_table); // TODO: Fix this
 
-    drivers::ahci::init(&mut allocator, &mut active_page_table);
+    drivers::pci::ahci::init(&mut allocator, &mut active_page_table);
 
     let ps2_devices = init_ps2_controller();
     let mut executor = Executor::new();
