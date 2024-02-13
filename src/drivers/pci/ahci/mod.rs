@@ -5,12 +5,15 @@ mod structures;
 
 use alloc::boxed::Box;
 use alloc::vec::Vec;
+use core::arch::asm;
 use core::mem::size_of;
 use core::ops::DerefMut;
 use core::ptr;
-use crate::{println, print, panic};
+use core::ptr::null;
+use core::str::from_raw_parts;
+use crate::{println, print, panic, serial_println, serial_print};
 use crate::drivers::pci::{find_all_pci_devices, PCIDevice};
-use crate::memory::Frame;
+use crate::memory::{Frame, FrameAllocator};
 use crate::memory::page_frame_allocator::PageFrameAllocator;
 use crate::memory::paging::{ActivePageTable};
 use crate::memory::paging::entry::EntryFlags;
@@ -140,7 +143,7 @@ struct FisPioSetup {
     rsv4: u16,  // Reserved
 }
 
-#[repr(C)]
+#[repr(C, packed)]
 struct FisRegD2H {
     fis_type: u8,   // FIS_TYPE_REG_D2H
 
@@ -188,7 +191,7 @@ struct ReceivedFis {
     rsv4: [u8; 0xFF - 0xA0],
 }
 
-#[repr(C)]
+#[repr(C, packed)]
 #[derive(Debug)]
 struct HbaMemoryRegisters {
     // 0x00 - 0x2B, Generic Host Control
@@ -211,7 +214,7 @@ struct HbaMemoryRegisters {
     vendor: [u8; 0x100-0xA1],
 }
 
-#[repr(C)]
+#[repr(C, packed)]
 #[derive(Debug)]
 pub struct PortRegisters {
     clb: u32,
@@ -244,7 +247,7 @@ pub struct PortRegisters {
 
 
 type CommandList = [CommandHeader; 32];
-#[repr(C)]
+#[repr(C, packed)]
 #[derive(Debug)]
 struct CommandHeader {
     flags: u16,
@@ -255,8 +258,7 @@ struct CommandHeader {
     reserved: [u32; 4],
 }
 
-#[repr(C)]
-#[derive(Debug)]
+#[repr(C, packed)]
 struct CommandTable {
     cfis: [u8; 64], // Command FIS
     acmd: [u8; 16], // ATAPI command, 12 or 16 bytes
@@ -264,8 +266,7 @@ struct CommandTable {
     first_prdt_entry: PrdtEntry,
 }
 
-#[repr(C)]
-#[derive(Debug)]
+#[repr(C, packed)]
 struct PrdtEntry {
     dba: u32,
     dbau: u32,
@@ -338,9 +339,9 @@ struct AHCIDevice {
     controller: *const AHCIController,
     port_index: usize,
 
-    serial_number: [u8; 21],
-    firmware_revision: [u8; 9],
-    model_number: [u8; 41],
+    serial_number: [u8; 20],
+    firmware_revision: [u8; 8],
+    model_number: [u8; 40],
 
     port_registers: &'static mut PortRegisters,
 
@@ -355,9 +356,9 @@ impl AHCIDevice {
             controller,
             port_index,
 
-            serial_number: [0; 21],
-            firmware_revision: [0; 9],
-            model_number: [0; 41],
+            serial_number: [0; 20],
+            firmware_revision: [0; 8],
+            model_number: [0; 40],
 
             port_registers,
 
@@ -365,21 +366,25 @@ impl AHCIDevice {
         }
     }
 
-    fn issue_identity(&mut self, identity: *mut u32) {
-        let mut command = &mut self.command_list[self.allocate_slot()];
+    fn issue_identity(&mut self, identity: *mut SataIdentify) {
+        let command_number = self.allocate_slot();
+        let mut command = &mut self.command_list[command_number];
 
         command.data_base = identity;
         command.data_length = 511;
         command.interrupt = false;
 
-        unsafe{ &mut *command.command_header }.flags = (size_of::<FisRegH2D>() / 4) as u16;
+        unsafe{ &mut *command.command_header }.flags |= (size_of::<FisRegH2D>() / 4) as u16;
         unsafe{ &mut *command.command_header }.prdtl = 1;
+        unsafe{ &mut *command.command_header }.reserved = [0; 4];
 
         // init prdt
         let command_table = unsafe{ &mut *command.command_table };
+        command_table.rsv.fill(0);
         command_table.first_prdt_entry.dba = identity as u32;
-        command_table.first_prdt_entry.dbau = (identity as u32 >> 32);
+        command_table.first_prdt_entry.dbau = (identity as u64 >> 32) as u32;
         command_table.first_prdt_entry.dbc = 511 | (0 << 31);
+        command_table.first_prdt_entry.reserved = 0;
 
         let command_pointer = &mut command_table.cfis;
         command_pointer.fill(0);
@@ -389,6 +394,9 @@ impl AHCIDevice {
         command_pointer[2] = 0xEC;
 
         // Issue command
+        self.issue_command(command_number);
+
+        let sata_identify = unsafe{&*(identity)};
     }
 
     fn allocate_slot(&mut self) -> usize {
@@ -396,7 +404,8 @@ impl AHCIDevice {
         let slot_count = controller.slot_count;
 
         for i in 0..slot_count {
-            if self.port_registers.sact & (1 << i) == 0 && self.port_registers.ci & (1 << i) == 0 {
+            // Find the first empty command slot
+            if !is_nth_bit_set(self.port_registers.sact as usize, i as usize) && !is_nth_bit_set(self.port_registers.ci as usize, i as usize) {
                 let command_header_address = (self.port_registers.clb as usize | ((self.port_registers.clbu as usize) << 32)) + i as usize * size_of::<CommandHeader>();
                 let command_header = unsafe { &*(command_header_address as *const CommandHeader )};
 
@@ -413,6 +422,40 @@ impl AHCIDevice {
 
         panic!("ahci: unable to allocate command slot");
     }
+
+    fn issue_command(&mut self, command_number: usize) {
+        const PORT_TFD_BSY: u32 = (1 << 7);
+        const PORT_TFD_DRQ: u32 = (1 << 3);
+        const PORT_CMD_ST: u32 = (1 << 0);
+        const PORT_CMD_CR: u32 = (1 << 15);
+        const PORT_CMD_FRE: u32 = (1 << 4);
+        const PORT_CMD_FR: u32 = (1 << 14);
+        const PORT_TFD_ERR: u32 = (1 << 0);
+
+        let command = &self.command_list[command_number];
+
+        // Wait until busy and transfer requested flags are not set
+        while self.port_registers.tfd & PORT_TFD_BSY != 0 || self.port_registers.tfd & PORT_TFD_DRQ != 0 {
+            unsafe { asm!("pause;"); }
+        }
+        
+        self.port_registers.cmd &= !PORT_CMD_ST;
+        while self.port_registers.cmd & PORT_CMD_CR != 0 {
+            unsafe { asm!("pause;"); }
+        } // good
+
+        self.port_registers.cmd |= PORT_CMD_FRE;
+        while self.port_registers.cmd & PORT_CMD_FR == 0 {
+            unsafe { asm!("pause;"); }
+        }
+        self.port_registers.cmd |= PORT_CMD_ST;
+
+        self.port_registers.ci = 1 << command.slot;
+
+        while self.port_registers.ci & (1 << command.slot) != 0 {
+            unsafe { asm!("pause;"); }
+        }
+    }
 }
 
 #[derive(Debug, Copy, Clone)]
@@ -421,7 +464,7 @@ struct AHCICommand {
     command_table: *mut CommandTable,
     ahci_device: *mut AHCIDevice,
 
-    data_base: *mut u32,
+    data_base: *mut SataIdentify,
     data_length: usize,
     interrupt: bool,
 
@@ -443,6 +486,132 @@ impl AHCICommand {
             slot: 0,
         }
     }
+}
+
+#[repr(C)]
+struct SataIdentify {
+    config: u16,      /* lots of obsolete bit flags */
+    cyls: u16,      /* obsolete */
+    reserved2: u16,   /* special config */
+    heads: u16,      /* "physical" heads */
+    track_bytes: u16,   /* unformatted bytes per track */
+    sector_bytes: u16,   /* unformatted bytes per sector */
+    sectors: u16,   /* "physical" sectors per track */
+    vendor0: u16,   /* vendor unique */
+    vendor1: u16,   /* vendor unique */
+    vendor2: u16,   /* vendor unique */
+    serial_no: [u8; 20],   /* 0 = not_specified */
+    buf_type: u16,
+    buf_size: u16,   /* 512 byte increments; 0 = not_specified */
+    ecc_bytes: u16,   /* for r/w long cmds; 0 = not_specified */
+    fw_rev: [u8; 8],   /* 0 = not_specified */
+    model: [u8; 40],   /* 0 = not_specified */
+    multi_count: u16, /* Multiple Count */
+    dword_io: u16,   /* 0=not_implemented; 1=implemented */
+    capability1: u16,   /* vendor unique */
+    capability2: u16,   /* bits 0:DMA 1:LBA 2:IORDYsw 3:IORDYsup word: 50 */
+    vendor5: u8,   /* vendor unique */
+    tPIO: u8,      /* 0=slow, 1=medium, 2=fast */
+    vendor6: u8,   /* vendor unique */
+    tDMA: u8,      /* 0=slow, 1=medium, 2=fast */
+    field_valid: u16,   /* bits 0:cur_ok 1:eide_ok */
+    cur_cyls: u16,   /* logical cylinders */
+    cur_heads: u16,   /* logical heads word 55*/
+    cur_sectors: u16,   /* logical sectors per track */
+    cur_capacity0: u16,   /* logical total sectors on drive */
+    cur_capacity1: u16,   /*  (2 words, misaligned int)     */
+    multsect: u8,   /* current multiple sector count */
+    multsect_valid: u8,   /* when (bit0==1) multsect is ok */
+    lba_capacity: u32,   /* total number of sectors */
+    dma_1word: u16,   /* single-word dma info */
+    dma_mword: u16,   /* multiple-word dma info */
+    eide_pio_modes: u16, /* bits 0:mode3 1:mode4 */
+    eide_dma_min: u16,   /* min mword dma cycle time (ns) */
+    eide_dma_time: u16,   /* recommended mword dma cycle time (ns) */
+    eide_pio: u16,       /* min cycle time (ns), no IORDY  */
+    eide_pio_iordy: u16, /* min cycle time (ns), with IORDY */
+    words69_70: [u16; 2],   /* reserved words 69-70 */
+    words71_74: [u16; 4],   /* reserved words 71-74 */
+    queue_depth: u16,   /*  */
+    sata_capability: u16,   /*  SATA Capabilities word 76*/
+    sata_additional: u16,   /*  Additional Capabilities */
+    sata_supported: u16,   /* SATA Features supported  */
+    features_enabled: u16,   /* SATA features enabled */
+    major_rev_num: u16,   /*  Major rev number word 80 */
+    minor_rev_num: u16,   /*  */
+    command_set_1: u16,   /* bits 0:Smart 1:Security 2:Removable 3:PM */
+    command_set_2: u16,   /* bits 14:Smart Enabled 13:0 zero */
+    cfsse: u16,      /* command set-feature supported extensions */
+    cfs_enable_1: u16,   /* command set-feature enabled */
+    cfs_enable_2: u16,   /* command set-feature enabled */
+    csf_default: u16,   /* command set-feature default */
+    dma_ultra: u16,   /*  */
+    word89: u16,      /* reserved (word 89) */
+    word90: u16,      /* reserved (word 90) */
+    CurAPMvalues: u16,   /* current APM values */
+    word92: u16,         /* reserved (word 92) */
+    comreset: u16,      /* should be cleared to 0 */
+    accoustic: u16,      /*  accoustic management */
+    min_req_sz: u16,      /* Stream minimum required size */
+    transfer_time_dma: u16,   /* Streaming Transfer Time-DMA */
+    access_latency: u16,      /* Streaming access latency-DMA & PIO WORD 97*/
+    perf_granularity: u32,   /* Streaming performance granularity */
+    total_usr_sectors: [u32; 2], /* Total number of user addressable sectors */
+    transfer_time_pio: u16,    /* Streaming Transfer time PIO */
+    reserved105: u16,       /* Word 105 */
+    sector_sz: u16,          /* Puysical Sector size / Logical sector size */
+    inter_seek_delay: u16,   /* In microseconds */
+    words108_116: [u16; 9],    /*  */
+    words_per_sector: u32,    /* words per logical sectors */
+    supported_settings: u16, /* continued from words 82-84 */
+    command_set_3: u16,       /* continued from words 85-87 */
+    words121_126: [u16; 6],   /* reserved words 121-126 */
+    word127: u16,         /* reserved (word 127) */
+    security_status: u16,   /* device lock function
+                   * 15:9   reserved
+                   * 8   security level 1:max 0:high
+                   * 7:6   reserved
+                   * 5   enhanced erase
+                   * 4   expire
+                   * 3   frozen
+                   * 2   locked
+                   * 1   en/disabled
+                   * 0   capability
+                   */
+    csfo: u16,      /* current set features options
+                   * 15:4   reserved
+                   * 3   auto reassign
+                   * 2   reverting
+                   * 1   read-look-ahead
+                   * 0   write cache
+                   */
+    words130_155: [u16; 26],/* reserved vendor words 130-155 */
+    word156: u16,
+    words157_159: [u16; 3],/* reserved vendor words 157-159 */
+    cfa: u16, /* CFA Power mode 1 */
+    words161_175: [u16; 15], /* Reserved */
+    media_serial: [u8; 60], /* words 176-205 Current Media serial number */
+    sct_cmd_transport: u16, /* SCT Command Transport */
+    words207_208: [u16; 2], /* reserved */
+    block_align: u16, /* Alignement of logical blocks in larger physical blocks */
+    WRV_sec_count: u32, /* Write-Read-Verify sector count mode 3 only */
+    verf_sec_count: u32, /* Verify Sector count mode 2 only */
+    nv_cache_capability: u16, /* NV Cache capabilities */
+    nv_cache_sz: u16, /* NV Cache size in logical blocks */
+    nv_cache_sz2: u16, /* NV Cache size in logical blocks */
+    rotation_rate: u16, /* Nominal media rotation rate */
+    reserved218: u16, /*  */
+    nv_cache_options: u16, /* NV Cache options */
+    words220_221: [u16; 2], /* reserved */
+    transport_major_rev: u16, /*  */
+    transport_minor_rev: u16, /*  */
+    words224_233: [u16; 10], /* Reserved */
+    min_dwnload_blocks: u16, /* Minimum number of 512byte units per DOWNLOAD MICROCODE
+                                  command for mode 03h */
+    max_dwnload_blocks: u16, /* Maximum number of 512byte units per DOWNLOAD MICROCODE
+                                  command for mode 03h */
+    words236_254: [u16; 19],   /* Reserved */
+    integrity: u16,          /* Cheksum, Signature */
 }
 
 pub fn init(allocator: &mut PageFrameAllocator, active_page_table: &mut ActivePageTable) {
@@ -467,7 +636,7 @@ pub fn init(allocator: &mut PageFrameAllocator, active_page_table: &mut ActivePa
     // Initialize ports
     for port in 0..ahci_controller.port_count as usize {
         if is_nth_bit_set(ahci_controller.hba.pi as usize, port) {
-            init_port(&ahci_controller, port, ahci_controller.bar5 as usize + 0x100 + port * 0x80);
+            init_port(allocator, active_page_table, &ahci_controller, port, ahci_controller.bar5 as usize + 0x100 + port * 0x80);
         }
     }
 
@@ -486,7 +655,7 @@ pub fn init(allocator: &mut PageFrameAllocator, active_page_table: &mut ActivePa
     */
 }
 
-fn init_port(controller: &AHCIController, port_index: usize, port_address: usize) {
+fn init_port(allocator: &mut PageFrameAllocator, active_page_table: &mut ActivePageTable, controller: &AHCIController, port_index: usize, port_address: usize) {
     let mut ahci_device = AHCIDevice::new(controller as *const AHCIController, port_index, port_address);
 
     match ahci_device.port_registers.sig {
@@ -499,33 +668,49 @@ fn init_port(controller: &AHCIController, port_index: usize, port_address: usize
 
     // TODO: Allocate somewhere else to map them as uncacheable
     // Allocate physical memory for the command list
-    let mut command_list_base = Box::into_raw(Box::<CommandList>::new_uninit()) as usize;
+    let mut command_list_frame = allocator.allocate_frame().expect("Could not allocate the memory");
+    let mut command_list_base = command_list_frame.start_address();
+    active_page_table.deref_mut().identity_map(command_list_frame, EntryFlags::WRITABLE | EntryFlags::NO_CACHE, allocator);
+    //let mut command_list_base = Box::into_raw(Box::<CommandList>::new_uninit()) as usize;
+
     ahci_device.port_registers.clb = command_list_base as u32;
     ahci_device.port_registers.clbu = (command_list_base >> 32) as u32;
 
     // Allocate physical memory for the command tables
     for i in 0..32 {
-        let header_address = command_list_base + i * core::mem::size_of::<CommandHeader>();
+        let header_address = command_list_base + i * size_of::<CommandHeader>();
         let command_header = unsafe{ &mut *(header_address as *mut CommandHeader) };
 
-        let command_table_base_address = Box::into_raw(Box::<CommandTable>::new_uninit()) as usize;
+        let mut command_table_frame = allocator.allocate_frame().expect("Could not allocate the memory");
+        let mut command_table_base_address = command_table_frame.start_address();
+        active_page_table.deref_mut().identity_map(command_table_frame, EntryFlags::WRITABLE | EntryFlags::NO_CACHE, allocator);
+        //let command_table_base_address = Box::into_raw(Box::<CommandTable>::new_uninit()) as usize;
 
         command_header.ctba = command_table_base_address as u32;
         command_header.ctbau = (command_table_base_address >> 32) as u32;
     }
 
     // Allocate physical memory for the received FIS
-    let mut command_list_base = Box::into_raw(Box::<ReceivedFis>::new_uninit()) as usize;
-    ahci_device.port_registers.clb = command_list_base as u32;
-    ahci_device.port_registers.clbu = (command_list_base >> 32) as u32;
+    let mut fis_base_frame = allocator.allocate_frame().expect("Could not allocate the memory");
+    let mut fis_base_base_address = fis_base_frame.start_address();
+    active_page_table.deref_mut().identity_map(fis_base_frame, EntryFlags::WRITABLE | EntryFlags::NO_CACHE, allocator);
+    //let mut fis_base = Box::into_raw(Box::<ReceivedFis>::new_uninit()) as usize;
+    ahci_device.port_registers.fb = fis_base_base_address as u32;
+    ahci_device.port_registers.fbu = (fis_base_base_address >> 32) as u32;
 
+    // Setting start and FIS receive enable flags
     ahci_device.port_registers.cmd |= (1 << 0) | (1 << 4);
 
-    ahci_device.issue_identity();
+    //let identity = Box::<u32>::new_uninit().as_mut_ptr();
+    let mut identity = allocator.allocate_frame().expect("Could not allocate the memory");
+    let mut identity_address = identity.start_address();
+    active_page_table.deref_mut().identity_map(identity, EntryFlags::WRITABLE | EntryFlags::NO_CACHE, allocator);
 
+    ahci_device.issue_identity(identity_address as *mut SataIdentify);
 
-    // , the received FIS, and its command tables. Make sure the command tables are 128 byte aligned.
-    // Memory map these as uncacheable.
+    let sata_identify = unsafe{&*(identity_address as *mut SataIdentify)};
+    println!("ahci: found a {}MB drive on port 0", sata_identify.lba_capacity * sata_identify.sector_bytes as u32 / 1048576);
+    //sata_identify.serial_no.iter().for_each(|&c| print!("{}", c as char));
 
 /*
     let command_list = unsafe { &*(command_list_address as *const CommandList) };

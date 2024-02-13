@@ -10,6 +10,7 @@
 #![feature(abi_x86_interrupt)]
 #![feature(never_type)]
 #![feature(new_uninit)]
+#![feature(str_from_raw_parts)]
 
 extern crate downcast_rs;
 extern crate alloc;
@@ -39,6 +40,7 @@ mod drivers;
 mod cpuid;
 mod task;
 mod fs;
+mod serial;
 
 #[no_mangle]
 pub extern fn _main(multiboot_information_address: usize) {
