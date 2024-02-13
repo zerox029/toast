@@ -274,222 +274,8 @@ struct PrdtEntry {
     dbc: u32,
 }
 
-
-#[derive(Debug)]
-struct AHCIController {
-    pci_device: PCIDevice,
-
-    bar5: u32,
-    version_maj: u32,
-    version_min: u32,
-    port_count: u32,
-    slot_count: u32,
-
-    hba: &'static HbaMemoryRegisters,
-}
-
-impl AHCIController {
-    fn new(allocator: &mut PageFrameAllocator, active_page_table: &mut ActivePageTable, pci_device: PCIDevice) -> Self {
-        // Memory map HBA registers as uncacheable.
-        let bar5 = pci_device.bar5(0);
-        let start_frame = Frame::containing_address(bar5 as usize);
-        let end_frame = Frame::containing_address(bar5 as usize + 0x10FF);
-        for frame in Frame::range_inclusive(start_frame, end_frame) {
-            active_page_table.deref_mut().identity_map(frame, EntryFlags::WRITABLE | EntryFlags::NO_CACHE, allocator);
-        }
-
-        let hba = unsafe { &*(bar5 as *mut HbaMemoryRegisters) };
-
-        let version_maj = (hba.vs >> 16) & 0xFFFF;
-        let version_min = hba.vs & 0xFFFF;
-        let port_count = hba.cap & 0b11111;
-        let slot_count = (hba.cap >> 8) & 0b11111;
-
-        Self {
-            pci_device,
-
-            bar5,
-            version_maj,
-            version_min,
-            port_count,
-            slot_count,
-
-            hba
-        }
-    }
-
-    fn bios_os_handoff(&self) {
-        if !is_nth_bit_set(self.hba.cap2 as usize, 0) {
-            println!("ahci: bios/os handoff not supported");
-            return;
-        }
-
-        // TODO
-
-        /*
-        let mut bohc_address = self.bar5 + 0x28;
-        let bohc_pointer = bohc_address as *mut u32;
-
-        unsafe { core::ptr::write(bohc_pointer, self.hba.bohc | 2) };*/
-    }
-}
-
-#[derive(Debug)]
-struct AHCIDevice {
-    controller: *const AHCIController,
-    port_index: usize,
-
-    serial_number: [u8; 20],
-    firmware_revision: [u8; 8],
-    model_number: [u8; 40],
-
-    port_registers: &'static mut PortRegisters,
-
-    command_list: [AHCICommand; 32],
-}
-
-impl AHCIDevice {
-    fn new(controller: *const AHCIController, port_index: usize, port_address: usize) -> Self {
-        let mut port_registers = unsafe { &mut *(port_address as *mut PortRegisters) };
-
-        Self {
-            controller,
-            port_index,
-
-            serial_number: [0; 20],
-            firmware_revision: [0; 8],
-            model_number: [0; 40],
-
-            port_registers,
-
-            command_list: [AHCICommand::new(); 32],
-        }
-    }
-
-    fn issue_identity(&mut self, identity: *mut SataIdentify) {
-        let command_number = self.allocate_slot();
-        let mut command = &mut self.command_list[command_number];
-
-        command.data_base = identity;
-        command.data_length = 511;
-        command.interrupt = false;
-
-        unsafe{ &mut *command.command_header }.flags |= (size_of::<FisRegH2D>() / 4) as u16;
-        unsafe{ &mut *command.command_header }.prdtl = 1;
-        unsafe{ &mut *command.command_header }.reserved = [0; 4];
-
-        // init prdt
-        let command_table = unsafe{ &mut *command.command_table };
-        command_table.rsv.fill(0);
-        command_table.first_prdt_entry.dba = identity as u32;
-        command_table.first_prdt_entry.dbau = (identity as u64 >> 32) as u32;
-        command_table.first_prdt_entry.dbc = 511 | (0 << 31);
-        command_table.first_prdt_entry.reserved = 0;
-
-        let command_pointer = &mut command_table.cfis;
-        command_pointer.fill(0);
-
-        command_pointer[0] = 0x27;
-        command_pointer[1] = (1 << 7);
-        command_pointer[2] = 0xEC;
-
-        // Issue command
-        self.issue_command(command_number);
-
-        let sata_identify = unsafe{&*(identity)};
-    }
-
-    fn allocate_slot(&mut self) -> usize {
-        let controller = unsafe{ &*self.controller };
-        let slot_count = controller.slot_count;
-
-        for i in 0..slot_count {
-            // Find the first empty command slot
-            if !is_nth_bit_set(self.port_registers.sact as usize, i as usize) && !is_nth_bit_set(self.port_registers.ci as usize, i as usize) {
-                let command_header_address = (self.port_registers.clb as usize | ((self.port_registers.clbu as usize) << 32)) + i as usize * size_of::<CommandHeader>();
-                let command_header = unsafe { &*(command_header_address as *const CommandHeader )};
-
-                let command_table_address = (command_header.ctba as usize | ((command_header.ctbau as usize) << 32)) + i as usize * size_of::<CommandTable>();
-
-                self.command_list[i as usize].ahci_device = self as *mut AHCIDevice;
-                self.command_list[i as usize].command_header = command_header_address as *mut CommandHeader;
-                self.command_list[i as usize].command_table = command_table_address as *mut CommandTable;
-                self.command_list[i as usize].slot = i;
-
-                return i as usize
-            }
-        }
-
-        panic!("ahci: unable to allocate command slot");
-    }
-
-    fn issue_command(&mut self, command_number: usize) {
-        const PORT_TFD_BSY: u32 = (1 << 7);
-        const PORT_TFD_DRQ: u32 = (1 << 3);
-        const PORT_CMD_ST: u32 = (1 << 0);
-        const PORT_CMD_CR: u32 = (1 << 15);
-        const PORT_CMD_FRE: u32 = (1 << 4);
-        const PORT_CMD_FR: u32 = (1 << 14);
-        const PORT_TFD_ERR: u32 = (1 << 0);
-
-        let command = &self.command_list[command_number];
-
-        // Wait until busy and transfer requested flags are not set
-        while self.port_registers.tfd & PORT_TFD_BSY != 0 || self.port_registers.tfd & PORT_TFD_DRQ != 0 {
-            unsafe { asm!("pause;"); }
-        }
-        
-        self.port_registers.cmd &= !PORT_CMD_ST;
-        while self.port_registers.cmd & PORT_CMD_CR != 0 {
-            unsafe { asm!("pause;"); }
-        } // good
-
-        self.port_registers.cmd |= PORT_CMD_FRE;
-        while self.port_registers.cmd & PORT_CMD_FR == 0 {
-            unsafe { asm!("pause;"); }
-        }
-        self.port_registers.cmd |= PORT_CMD_ST;
-
-        self.port_registers.ci = 1 << command.slot;
-
-        while self.port_registers.ci & (1 << command.slot) != 0 {
-            unsafe { asm!("pause;"); }
-        }
-    }
-}
-
-#[derive(Debug, Copy, Clone)]
-struct AHCICommand {
-    command_header: *mut CommandHeader,
-    command_table: *mut CommandTable,
-    ahci_device: *mut AHCIDevice,
-
-    data_base: *mut SataIdentify,
-    data_length: usize,
-    interrupt: bool,
-
-    slot: u32,
-}
-
-
-impl AHCICommand {
-    fn new() -> Self {
-        Self {
-            command_header: ptr::null_mut(),
-            command_table: ptr::null_mut(),
-            ahci_device: ptr::null_mut(),
-
-            data_base: ptr::null_mut(),
-            data_length: 0,
-            interrupt: false,
-
-            slot: 0,
-        }
-    }
-}
-
 #[repr(C)]
-struct SataIdentify {
+struct IdentifyResponse {
     config: u16,      /* lots of obsolete bit flags */
     cyls: u16,      /* obsolete */
     reserved2: u16,   /* special config */
@@ -614,6 +400,219 @@ struct SataIdentify {
     integrity: u16,          /* Cheksum, Signature */
 }
 
+#[derive(Debug)]
+struct AHCIController {
+    pci_device: PCIDevice,
+
+    bar5: u32,
+    version_maj: u32,
+    version_min: u32,
+    port_count: u32,
+    slot_count: u32,
+
+    hba: &'static HbaMemoryRegisters,
+}
+
+impl AHCIController {
+    fn new(allocator: &mut PageFrameAllocator, active_page_table: &mut ActivePageTable, pci_device: PCIDevice) -> Self {
+        // Memory map HBA registers as uncacheable.
+        let bar5 = pci_device.bar5(0);
+        let start_frame = Frame::containing_address(bar5 as usize);
+        let end_frame = Frame::containing_address(bar5 as usize + 0x10FF);
+        for frame in Frame::range_inclusive(start_frame, end_frame) {
+            active_page_table.deref_mut().identity_map(frame, EntryFlags::WRITABLE | EntryFlags::NO_CACHE, allocator);
+        }
+
+        let hba = unsafe { &*(bar5 as *mut HbaMemoryRegisters) };
+
+        let version_maj = (hba.vs >> 16) & 0xFFFF;
+        let version_min = hba.vs & 0xFFFF;
+        let port_count = hba.cap & 0b11111;
+        let slot_count = (hba.cap >> 8) & 0b11111;
+
+        Self {
+            pci_device,
+
+            bar5,
+            version_maj,
+            version_min,
+            port_count,
+            slot_count,
+
+            hba
+        }
+    }
+
+    fn bios_os_handoff(&self) {
+        if !is_nth_bit_set(self.hba.cap2 as usize, 0) {
+            println!("ahci: bios/os handoff not supported");
+            return;
+        }
+
+        // TODO
+
+        /*
+        let mut bohc_address = self.bar5 + 0x28;
+        let bohc_pointer = bohc_address as *mut u32;
+
+        unsafe { core::ptr::write(bohc_pointer, self.hba.bohc | 2) };*/
+    }
+}
+
+#[derive(Debug)]
+struct AHCIDevice {
+    controller: *const AHCIController,
+    port_index: usize,
+
+    serial_number: [u8; 20],
+    firmware_revision: [u8; 8],
+    model_number: [u8; 40],
+
+    port_registers: &'static mut PortRegisters,
+
+    command_list: [AHCICommand; 32],
+}
+
+impl AHCIDevice {
+    fn new(controller: *const AHCIController, port_index: usize, port_address: usize) -> Self {
+        let mut port_registers = unsafe { &mut *(port_address as *mut PortRegisters) };
+
+        Self {
+            controller,
+            port_index,
+
+            serial_number: [0; 20],
+            firmware_revision: [0; 8],
+            model_number: [0; 40],
+
+            port_registers,
+
+            command_list: [AHCICommand::new(); 32],
+        }
+    }
+
+    fn issue_identity(&mut self, identity: *mut IdentifyResponse) {
+        let command_number = self.allocate_slot();
+        let mut command = &mut self.command_list[command_number];
+
+        command.data_base = identity;
+        command.data_length = 511;
+        command.interrupt = false;
+
+        unsafe{ &mut *command.command_header }.flags |= (size_of::<FisRegH2D>() / 4) as u16;
+        unsafe{ &mut *command.command_header }.prdtl = 1;
+        unsafe{ &mut *command.command_header }.reserved = [0; 4];
+
+        // init prdt
+        let command_table = unsafe{ &mut *command.command_table };
+        command_table.rsv.fill(0);
+        command_table.first_prdt_entry.dba = identity as u32;
+        command_table.first_prdt_entry.dbau = (identity as u64 >> 32) as u32;
+        command_table.first_prdt_entry.dbc = 511 | (0 << 31);
+        command_table.first_prdt_entry.reserved = 0;
+
+        let command_pointer = &mut command_table.cfis;
+        command_pointer.fill(0);
+
+        command_pointer[0] = 0x27;
+        command_pointer[1] = (1 << 7);
+        command_pointer[2] = 0xEC;
+
+        // Issue command
+        self.issue_command(command_number);
+
+        let sata_identify = unsafe{&*(identity)};
+    }
+
+    fn allocate_slot(&mut self) -> usize {
+        let controller = unsafe{ &*self.controller };
+        let slot_count = controller.slot_count;
+
+        for i in 0..slot_count {
+            // Find the first empty command slot
+            if !is_nth_bit_set(self.port_registers.sact as usize, i as usize) && !is_nth_bit_set(self.port_registers.ci as usize, i as usize) {
+                let command_header_address = (self.port_registers.clb as usize | ((self.port_registers.clbu as usize) << 32)) + i as usize * size_of::<CommandHeader>();
+                let command_header = unsafe { &*(command_header_address as *const CommandHeader )};
+
+                let command_table_address = (command_header.ctba as usize | ((command_header.ctbau as usize) << 32)) + i as usize * size_of::<CommandTable>();
+
+                self.command_list[i as usize].ahci_device = self as *mut AHCIDevice;
+                self.command_list[i as usize].command_header = command_header_address as *mut CommandHeader;
+                self.command_list[i as usize].command_table = command_table_address as *mut CommandTable;
+                self.command_list[i as usize].slot = i;
+
+                return i as usize
+            }
+        }
+
+        panic!("ahci: unable to allocate command slot");
+    }
+
+    fn issue_command(&mut self, command_number: usize) {
+        const PORT_TFD_BSY: u32 = (1 << 7);
+        const PORT_TFD_DRQ: u32 = (1 << 3);
+        const PORT_CMD_ST: u32 = (1 << 0);
+        const PORT_CMD_CR: u32 = (1 << 15);
+        const PORT_CMD_FRE: u32 = (1 << 4);
+        const PORT_CMD_FR: u32 = (1 << 14);
+        const PORT_TFD_ERR: u32 = (1 << 0);
+
+        let command = &self.command_list[command_number];
+
+        // Wait until busy and transfer requested flags are not set
+        while self.port_registers.tfd & PORT_TFD_BSY != 0 || self.port_registers.tfd & PORT_TFD_DRQ != 0 {
+            unsafe { asm!("pause;"); }
+        }
+        
+        self.port_registers.cmd &= !PORT_CMD_ST;
+        while self.port_registers.cmd & PORT_CMD_CR != 0 {
+            unsafe { asm!("pause;"); }
+        } // good
+
+        self.port_registers.cmd |= PORT_CMD_FRE;
+        while self.port_registers.cmd & PORT_CMD_FR == 0 {
+            unsafe { asm!("pause;"); }
+        }
+        self.port_registers.cmd |= PORT_CMD_ST;
+
+        self.port_registers.ci = 1 << command.slot;
+
+        while self.port_registers.ci & (1 << command.slot) != 0 {
+            unsafe { asm!("pause;"); }
+        }
+    }
+}
+
+#[derive(Debug, Copy, Clone)]
+struct AHCICommand {
+    command_header: *mut CommandHeader,
+    command_table: *mut CommandTable,
+    ahci_device: *mut AHCIDevice,
+
+    data_base: *mut IdentifyResponse,
+    data_length: usize,
+    interrupt: bool,
+
+    slot: u32,
+}
+
+
+impl AHCICommand {
+    fn new() -> Self {
+        Self {
+            command_header: ptr::null_mut(),
+            command_table: ptr::null_mut(),
+            ahci_device: ptr::null_mut(),
+
+            data_base: ptr::null_mut(),
+            data_length: 0,
+            interrupt: false,
+
+            slot: 0,
+        }
+    }
+}
+
 pub fn init(allocator: &mut PageFrameAllocator, active_page_table: &mut ActivePageTable) {
     println!("ahci: init...");
 
@@ -706,9 +705,9 @@ fn init_port(allocator: &mut PageFrameAllocator, active_page_table: &mut ActiveP
     let mut identity_address = identity.start_address();
     active_page_table.deref_mut().identity_map(identity, EntryFlags::WRITABLE | EntryFlags::NO_CACHE, allocator);
 
-    ahci_device.issue_identity(identity_address as *mut SataIdentify);
+    ahci_device.issue_identity(identity_address as *mut IdentifyResponse);
 
-    let sata_identify = unsafe{&*(identity_address as *mut SataIdentify)};
+    let sata_identify = unsafe{&*(identity_address as *mut IdentifyResponse)};
     println!("ahci: found a {}MB drive on port 0", sata_identify.lba_capacity * sata_identify.sector_bytes as u32 / 1048576);
     //sata_identify.serial_no.iter().for_each(|&c| print!("{}", c as char));
 
