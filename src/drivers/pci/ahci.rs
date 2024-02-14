@@ -1,17 +1,16 @@
+// Structure definitions
 // https://www.intel.com/content/dam/www/public/us/en/documents/technical-specifications/serial-ata-ahci-spec-rev1-3-1.pdf
 // http://www.usedsite.co.kr/pds/file/SerialATA_Revision_3_0_RC11.pdf
 
-mod structures;
+// Command definitions:
+// https://tc.gts3.org/cs3210/2016/spring/r/hardware/ATA8-ACS.pdf
 
-use alloc::boxed::Box;
-use alloc::vec::Vec;
 use core::arch::asm;
+use core::ffi::c_void;
 use core::mem::size_of;
 use core::ops::DerefMut;
 use core::ptr;
-use core::ptr::null;
-use core::str::from_raw_parts;
-use crate::{println, print, panic, serial_println, serial_print};
+use crate::{println, print};
 use crate::drivers::pci::{find_all_pci_devices, PCIDevice};
 use crate::memory::{Frame, FrameAllocator};
 use crate::memory::page_frame_allocator::PageFrameAllocator;
@@ -24,16 +23,16 @@ const SATA_SIG_ATAPI: u32   = 0xEB140101;   // SATAPI drive
 const SATA_SIG_SEMB: u32    = 0xC33C0101;   // Enclosure management bridge
 const SATA_SIG_PM: u32      = 0x96690101;    // Port multiplier
 
-enum FisType {
-    RegH2D      = 0x27, // Register FIS - host to device
-    RegD2H      = 0x34, // Register FIS - device to host
-    DmaAct      = 0x39, // DMA activate FIS - device to host
-    DmaSetup    = 0x41, // DMA setup FIS - bidirectional
-    Data        = 0x46, // Data FIS - bidirectional
-    Bist        = 0x58, // BIST activate FIS - bidirectional
-    PioSetup    = 0x5F, // PIO setup FIS - device to host
-    DevBits     = 0xA1, // Set device bits FIS - device to host
-}
+
+const FIS_TYPE_REG_H2D: u8      = 0x27;
+const FIS_TYPE_REG_D2H: u8      = 0x34;
+const FIS_TYPE_DMA_ACT: u8      = 0x39;
+const FIS_TYPE_DMA_SETUP: u8    = 0x41;
+const FIS_TYPE_DATA: u8         = 0x46;
+const FIS_TYPE_BIST: u8         = 0x58;
+const FIS_TYPE_PIO_SETUP: u8   = 0x5F;
+const FIS_TYPE_DEV_BITS: u8     = 0xA1;
+
 
 #[repr(C, packed)]
 struct FisRegH2D {
@@ -63,22 +62,10 @@ struct FisRegH2D {
 }
 
 #[repr(C, packed)]
-struct FisData {
-    fis_type: u8,   // FIS_TYPE_DATA
-
-    pmport: u8,     // Port multiplier
-    rsv0: u8,       // Reserved
-
-    rsv1: [u8; 2],  // Reserved
-
-    data: [u32; 1], // Payload
-}
-
-#[repr(C, packed)]
 struct FisDmaSetup {
     fis_type: u8,       // FIS_TYPE_REG_DMA_SETUP
 
-    pmport_byte: u8,         // Port multiplier
+    flags: u8,         // Port multiplier
 
     rsvd: u16,      // Reserved
 
@@ -92,27 +79,6 @@ struct FisDmaSetup {
     transfer_count: u32,// Number of bytes to transfer. Bit 0 must be 0
 
     rsvd3: u32,         // Reserved
-}
-
-impl FisDmaSetup {
-    pub fn pmport(&self) -> u8 {
-        self.pmport_byte & 0b1111
-    }
-
-    /// Data transfer direction, 1 - device to host
-    pub fn d(&self) -> bool {
-        is_nth_bit_set(self.pmport_byte as usize, 5)
-    }
-
-    /// Interrupt bit
-    pub fn i(&self) -> bool {
-        is_nth_bit_set(self.pmport_byte as usize, 6)
-    }
-
-    /// Auto-activate. Specifies if DMA Activate FIS is needed
-    pub fn a(&self) -> bool {
-        is_nth_bit_set(self.pmport_byte as usize, 7)
-    }
 }
 
 #[repr(C, packed)]
@@ -274,6 +240,7 @@ struct PrdtEntry {
     dbc: u32,
 }
 
+// http://www.usedsite.co.kr/pds/file/SerialATA_Revision_3_0_RC11.pdf pp.479
 #[repr(C)]
 struct IdentifyResponse {
     config: u16,      /* lots of obsolete bit flags */
@@ -297,9 +264,9 @@ struct IdentifyResponse {
     capability1: u16,   /* vendor unique */
     capability2: u16,   /* bits 0:DMA 1:LBA 2:IORDYsw 3:IORDYsup word: 50 */
     vendor5: u8,   /* vendor unique */
-    tPIO: u8,      /* 0=slow, 1=medium, 2=fast */
+    tpio: u8,      /* 0=slow, 1=medium, 2=fast */
     vendor6: u8,   /* vendor unique */
-    tDMA: u8,      /* 0=slow, 1=medium, 2=fast */
+    tdma: u8,      /* 0=slow, 1=medium, 2=fast */
     field_valid: u16,   /* bits 0:cur_ok 1:eide_ok */
     cur_cyls: u16,   /* logical cylinders */
     cur_heads: u16,   /* logical heads word 55*/
@@ -334,7 +301,7 @@ struct IdentifyResponse {
     dma_ultra: u16,   /*  */
     word89: u16,      /* reserved (word 89) */
     word90: u16,      /* reserved (word 90) */
-    CurAPMvalues: u16,   /* current APM values */
+    cur_apm_values: u16,   /* current APM values */
     word92: u16,         /* reserved (word 92) */
     comreset: u16,      /* should be cleared to 0 */
     accoustic: u16,      /*  accoustic management */
@@ -380,7 +347,7 @@ struct IdentifyResponse {
     sct_cmd_transport: u16, /* SCT Command Transport */
     words207_208: [u16; 2], /* reserved */
     block_align: u16, /* Alignement of logical blocks in larger physical blocks */
-    WRV_sec_count: u32, /* Write-Read-Verify sector count mode 3 only */
+    wrv_sec_count: u32, /* Write-Read-Verify sector count mode 3 only */
     verf_sec_count: u32, /* Verify Sector count mode 2 only */
     nv_cache_capability: u16, /* NV Cache capabilities */
     nv_cache_sz: u16, /* NV Cache size in logical blocks */
@@ -475,7 +442,7 @@ struct AHCIDevice {
 
 impl AHCIDevice {
     fn new(controller: *const AHCIController, port_index: usize, port_address: usize) -> Self {
-        let mut port_registers = unsafe { &mut *(port_address as *mut PortRegisters) };
+        let port_registers = unsafe { &mut *(port_address as *mut PortRegisters) };
 
         Self {
             controller,
@@ -491,37 +458,113 @@ impl AHCIDevice {
         }
     }
 
-    fn issue_identity(&mut self, identity: *mut IdentifyResponse) {
+    fn issue_identify(&mut self, identity: *mut IdentifyResponse) {
         let command_number = self.allocate_slot();
-        let mut command = &mut self.command_list[command_number];
 
-        command.data_base = identity;
-        command.data_length = 511;
-        command.interrupt = false;
+        {
+            let command = &mut self.command_list[command_number];
 
-        unsafe{ &mut *command.command_header }.flags |= (size_of::<FisRegH2D>() / 4) as u16;
-        unsafe{ &mut *command.command_header }.prdtl = 1;
-        unsafe{ &mut *command.command_header }.reserved = [0; 4];
+            command.destination_address = identity as *mut c_void;
+            command.data_length = 511;
+            command.interrupt = false;
 
-        // init prdt
-        let command_table = unsafe{ &mut *command.command_table };
-        command_table.rsv.fill(0);
-        command_table.first_prdt_entry.dba = identity as u32;
-        command_table.first_prdt_entry.dbau = (identity as u64 >> 32) as u32;
-        command_table.first_prdt_entry.dbc = 511 | (0 << 31);
-        command_table.first_prdt_entry.reserved = 0;
+            let command_header = unsafe{ &mut *command.command_header };
+            command_header.flags |= (size_of::<FisRegH2D>() / 4) as u16;
+            command_header.prdtl = 1;
+            command_header.reserved = [0; 4];
 
-        let command_pointer = &mut command_table.cfis;
-        command_pointer.fill(0);
+            let command_table = unsafe{ &mut *command.command_table };
+            let command_pointer = &mut command_table.cfis;
 
-        command_pointer[0] = 0x27;
-        command_pointer[1] = (1 << 7);
-        command_pointer[2] = 0xEC;
+            command_pointer.fill(0);
+            command_pointer[0] = FIS_TYPE_REG_H2D; // FIS_TYPE
+            command_pointer[1] = 1 << 7;  // flags
+            command_pointer[2] = 0xEC;  // device
+        }
 
-        // Issue command
+        self.init_prdt(command_number);
         self.issue_command(command_number);
+    }
 
-        let sata_identify = unsafe{&*(identity)};
+    /// Reads sector_count amount of sectors from the device and writes it to buffer
+    fn issue_read(&mut self, sector_offset: u64, sector_count: u64, buffer: *mut c_void) {
+        let command_number = self.allocate_slot();
+
+        {
+            let command = &mut self.command_list[command_number];
+
+            command.destination_address = buffer;
+            command.data_length = (sector_count * 0x200 - 1) as usize;
+            command.interrupt = false;
+
+            let command_header = unsafe{ &mut *command.command_header };
+            command_header.flags &= !(0b11111 | (1 << 6));
+            command_header.flags |= (size_of::<FisRegH2D>() / 4) as u16;
+            command_header.prdtl = 1;
+            command_header.reserved = [0; 4];
+
+            let command_table = unsafe{ &mut *command.command_table };
+            let command_pointer = &mut command_table.cfis;
+
+            command_pointer.fill(0);
+            command_pointer[0] = FIS_TYPE_REG_H2D; // FIS_TYPE
+            command_pointer[1] = 1 << 7; // flags
+            command_pointer[2] = 0x25; // command
+            command_pointer[7] = 1 << 6; // device
+
+            command_pointer[4] = sector_offset as u8; // LBA0
+            command_pointer[5] = (sector_offset >> 8) as u8; // LBA1
+            command_pointer[6] = (sector_offset >> 16) as u8; // LBA2
+            command_pointer[8] = (sector_offset >> 24) as u8; // LBA3
+            command_pointer[9] = (sector_offset >> 32) as u8; // LBA4
+            command_pointer[10] = (sector_offset >> 40) as u8; // LBA5
+
+            command_pointer[12] = (sector_count >> 0) as u8; // countl
+            command_pointer[13] = (sector_count >> 8) as u8; // counth
+        }
+
+        self.init_prdt(command_number);
+        self.issue_command(command_number);
+    }
+
+    fn issue_write(&mut self, sector_offset: u64, sector_count: u64, buffer: *mut c_void) {
+        let command_number = self.allocate_slot();
+
+        {
+            let command = &mut self.command_list[command_number];
+
+            let command_header = unsafe{ &mut *command.command_header };
+            command_header.flags &= !(0b11111 | (1 << 6));
+            command_header.flags |= (size_of::<FisRegH2D>() / 4) as u16;
+            command_header.prdtl = 1;
+            command_header.reserved = [0; 4];
+
+            command.destination_address = buffer;
+            command.data_length = (sector_count * 0x200 - 1) as usize;
+            command.interrupt = false;
+
+            let command_table = unsafe{ &mut *command.command_table };
+            let command_pointer = &mut command_table.cfis;
+
+            command_pointer.fill(0);
+            command_pointer[0] = FIS_TYPE_REG_H2D; // FIS_TYPE
+            command_pointer[1] = 1 << 7; // flags
+            command_pointer[2] = 0x35; // command
+            command_pointer[7] = 1 << 6; // device
+
+            command_pointer[4] = sector_offset as u8; // LBA0
+            command_pointer[5] = (sector_offset >> 8) as u8; // LBA1
+            command_pointer[6] = (sector_offset >> 16) as u8; // LBA2
+            command_pointer[8] = (sector_offset >> 24) as u8; // LBA3
+            command_pointer[9] = (sector_offset >> 32) as u8; // LBA4
+            command_pointer[10] = (sector_offset >> 40) as u8; // LBA5
+
+            command_pointer[12] = (sector_count >> 0) as u8; // countl
+            command_pointer[13] = (sector_count >> 8) as u8; // counth
+        }
+
+        self.init_prdt(command_number);
+        self.issue_command(command_number);
     }
 
     fn allocate_slot(&mut self) -> usize {
@@ -548,14 +591,25 @@ impl AHCIDevice {
         panic!("ahci: unable to allocate command slot");
     }
 
+    fn init_prdt(&mut self, command_number: usize) {
+        let command = &self.command_list[command_number];
+        let command_table = unsafe{ &mut *command.command_table };
+
+        command_table.rsv.fill(0);
+        command_table.first_prdt_entry.dba = command.destination_address as u32;
+        command_table.first_prdt_entry.dbau = (command.destination_address as u64 >> 32) as u32;
+        command_table.first_prdt_entry.dbc = (command.data_length | ((command.interrupt as usize) << 31)) as u32;
+        command_table.first_prdt_entry.reserved = 0;
+    }
+
     fn issue_command(&mut self, command_number: usize) {
-        const PORT_TFD_BSY: u32 = (1 << 7);
-        const PORT_TFD_DRQ: u32 = (1 << 3);
-        const PORT_CMD_ST: u32 = (1 << 0);
-        const PORT_CMD_CR: u32 = (1 << 15);
-        const PORT_CMD_FRE: u32 = (1 << 4);
-        const PORT_CMD_FR: u32 = (1 << 14);
-        const PORT_TFD_ERR: u32 = (1 << 0);
+        const PORT_TFD_BSY: u32 = 1 << 7;
+        const PORT_TFD_DRQ: u32 = 1 << 3;
+        const PORT_TFD_ERR: u32 = 1 << 0;
+        const PORT_CMD_ST: u32 = 1 << 0;
+        const PORT_CMD_CR: u32 = 1 << 15;
+        const PORT_CMD_FRE: u32 = 1 << 4;
+        const PORT_CMD_FR: u32 = 1 << 14;
 
         let command = &self.command_list[command_number];
 
@@ -563,7 +617,7 @@ impl AHCIDevice {
         while self.port_registers.tfd & PORT_TFD_BSY != 0 || self.port_registers.tfd & PORT_TFD_DRQ != 0 {
             unsafe { asm!("pause;"); }
         }
-        
+
         self.port_registers.cmd &= !PORT_CMD_ST;
         while self.port_registers.cmd & PORT_CMD_CR != 0 {
             unsafe { asm!("pause;"); }
@@ -580,6 +634,16 @@ impl AHCIDevice {
         while self.port_registers.ci & (1 << command.slot) != 0 {
             unsafe { asm!("pause;"); }
         }
+
+        if self.port_registers.tfd & PORT_TFD_ERR  != 0{
+            panic!("ahci: an error has occured during command data transfer");
+        }
+
+        self.port_registers.cmd &= !PORT_CMD_ST;
+        while self.port_registers.cmd & PORT_CMD_ST != 0 {
+            unsafe { asm!("pause;"); }
+        }
+        self.port_registers.cmd &= !PORT_CMD_FRE;
     }
 }
 
@@ -589,7 +653,7 @@ struct AHCICommand {
     command_table: *mut CommandTable,
     ahci_device: *mut AHCIDevice,
 
-    data_base: *mut IdentifyResponse,
+    destination_address: *mut c_void,
     data_length: usize,
     interrupt: bool,
 
@@ -604,7 +668,7 @@ impl AHCICommand {
             command_table: ptr::null_mut(),
             ahci_device: ptr::null_mut(),
 
-            data_base: ptr::null_mut(),
+            destination_address: ptr::null_mut(),
             data_length: 0,
             interrupt: false,
 
@@ -638,20 +702,6 @@ pub fn init(allocator: &mut PageFrameAllocator, active_page_table: &mut ActivePa
             init_port(allocator, active_page_table, &ahci_controller, port, ahci_controller.bar5 as usize + 0x100 + port * 0x80);
         }
     }
-
-    /*
-    // Reset controller
-    let mut ghc_address = base_memory + 0x4;
-    let ghc_pointer = ghc_address as *mut u32;
-
-    //unsafe { core::ptr::write(ghc_pointer, hba.ghc | 1) };
-
-    // Register IRQ handler, using interrupt line given in the PCI register.
-    println!("ahci: connected to IRQ{}", ahci_controller.interrupt_line(0));
-
-    // Enable AHCI mode and interrupts in global host control register.
-    unsafe { core::ptr::write(ghc_pointer, hba.ghc | 0x80000002) };
-    */
 }
 
 fn init_port(allocator: &mut PageFrameAllocator, active_page_table: &mut ActivePageTable, controller: &AHCIController, port_index: usize, port_address: usize) {
@@ -665,12 +715,11 @@ fn init_port(allocator: &mut PageFrameAllocator, active_page_table: &mut ActiveP
         _ => return
     }
 
-    // TODO: Allocate somewhere else to map them as uncacheable
+    // TODO: Allocate memory for these more efficiently, no need to allocate a new frame every time
     // Allocate physical memory for the command list
-    let mut command_list_frame = allocator.allocate_frame().expect("Could not allocate the memory");
-    let mut command_list_base = command_list_frame.start_address();
+    let command_list_frame = allocator.allocate_frame().expect("Could not allocate the memory");
+    let command_list_base = command_list_frame.start_address();
     active_page_table.deref_mut().identity_map(command_list_frame, EntryFlags::WRITABLE | EntryFlags::NO_CACHE, allocator);
-    //let mut command_list_base = Box::into_raw(Box::<CommandList>::new_uninit()) as usize;
 
     ahci_device.port_registers.clb = command_list_base as u32;
     ahci_device.port_registers.clbu = (command_list_base >> 32) as u32;
@@ -680,47 +729,47 @@ fn init_port(allocator: &mut PageFrameAllocator, active_page_table: &mut ActiveP
         let header_address = command_list_base + i * size_of::<CommandHeader>();
         let command_header = unsafe{ &mut *(header_address as *mut CommandHeader) };
 
-        let mut command_table_frame = allocator.allocate_frame().expect("Could not allocate the memory");
-        let mut command_table_base_address = command_table_frame.start_address();
+        let command_table_frame = allocator.allocate_frame().expect("Could not allocate the memory");
+        let command_table_base_address = command_table_frame.start_address();
         active_page_table.deref_mut().identity_map(command_table_frame, EntryFlags::WRITABLE | EntryFlags::NO_CACHE, allocator);
-        //let command_table_base_address = Box::into_raw(Box::<CommandTable>::new_uninit()) as usize;
 
         command_header.ctba = command_table_base_address as u32;
         command_header.ctbau = (command_table_base_address >> 32) as u32;
     }
 
     // Allocate physical memory for the received FIS
-    let mut fis_base_frame = allocator.allocate_frame().expect("Could not allocate the memory");
-    let mut fis_base_base_address = fis_base_frame.start_address();
+    let fis_base_frame = allocator.allocate_frame().expect("Could not allocate the memory");
+    let fis_base_base_address = fis_base_frame.start_address();
     active_page_table.deref_mut().identity_map(fis_base_frame, EntryFlags::WRITABLE | EntryFlags::NO_CACHE, allocator);
-    //let mut fis_base = Box::into_raw(Box::<ReceivedFis>::new_uninit()) as usize;
     ahci_device.port_registers.fb = fis_base_base_address as u32;
     ahci_device.port_registers.fbu = (fis_base_base_address >> 32) as u32;
 
     // Setting start and FIS receive enable flags
     ahci_device.port_registers.cmd |= (1 << 0) | (1 << 4);
 
-    //let identity = Box::<u32>::new_uninit().as_mut_ptr();
-    let mut identity = allocator.allocate_frame().expect("Could not allocate the memory");
-    let mut identity_address = identity.start_address();
+    let identity = allocator.allocate_frame().expect("Could not allocate the memory");
+    let identity_address = identity.start_address();
     active_page_table.deref_mut().identity_map(identity, EntryFlags::WRITABLE | EntryFlags::NO_CACHE, allocator);
 
-    ahci_device.issue_identity(identity_address as *mut IdentifyResponse);
+    ahci_device.issue_identify(identity_address as *mut IdentifyResponse);
 
     let sata_identify = unsafe{&*(identity_address as *mut IdentifyResponse)};
     println!("ahci: found a {}MB drive on port 0", sata_identify.lba_capacity * sata_identify.sector_bytes as u32 / 1048576);
-    //sata_identify.serial_no.iter().for_each(|&c| print!("{}", c as char));
 
-/*
-    let command_list = unsafe { &*(command_list_address as *const CommandList) };
-    command_list.iter().for_each(|command_header| {
-        let command_table_address = (command_header.dw2 as u64) | ((command_header.dw3 as u64) << 32);
-        active_page_table.deref_mut().identity_map_if_unmapped(Frame::containing_address(command_table_address as usize), EntryFlags::WRITABLE | EntryFlags::NO_CACHE, allocator);
-    });
+    let write_buffer_frame = allocator.allocate_frame().expect("Could not allocate the memory");
+    let write_buffer_address = write_buffer_frame.start_address();
+    active_page_table.deref_mut().identity_map(write_buffer_frame, EntryFlags::WRITABLE, allocator);
 
-    let fis_address = (port_registers.fb as u64) | ((port_registers.fbu as u64) << 32);
-    active_page_table.deref_mut().identity_map_if_unmapped(Frame::containing_address(fis_address as usize), EntryFlags::WRITABLE | EntryFlags::NO_CACHE, allocator);
-*/
+    unsafe { ptr::write(write_buffer_address as *mut u32, 123456); }
+    ahci_device.issue_write(0, 1, write_buffer_address as *mut c_void);
+
+
+    let read_buffer_frame = allocator.allocate_frame().expect("Could not allocate the memory");
+    let read_buffer_address = read_buffer_frame.start_address();
+    active_page_table.deref_mut().identity_map(read_buffer_frame, EntryFlags::WRITABLE, allocator);
+
+    ahci_device.issue_write(0, 1, read_buffer_address as *mut c_void);
+    println!("{:X}", unsafe{*(read_buffer_address as *mut u128)})
 }
 
 fn is_ahci_controller(device: &PCIDevice) -> bool {

@@ -19,7 +19,6 @@ extern crate rlibc;
 use core::panic::PanicInfo;
 use x86_64::registers::model_specific::Efer;
 use x86_64::registers::control::{Cr0, Cr0Flags, EferFlags};
-use crate::acpi::init_acpi;
 use crate::cpuid::CPU_INFO;
 use crate::interrupts::{INTERRUPT_CONTROLLER, InterruptController};
 use crate::memory::init_memory_modules;

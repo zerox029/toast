@@ -3,7 +3,7 @@ mod fixed_size_block_allocator;
 
 use alloc::boxed::Box;
 use alloc::vec::Vec;
-use crate::memory::{Frame, FrameAllocator};
+use crate::memory::{FrameAllocator};
 use crate::memory::heap_allocator::fixed_size_block_allocator::FixedSizeBlockAllocator;
 use crate::memory::paging::mapper::Mapper;
 use crate::memory::paging::{Page, VirtualAddress};
