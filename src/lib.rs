@@ -21,10 +21,10 @@ use x86_64::registers::model_specific::Efer;
 use x86_64::registers::control::{Cr0, Cr0Flags, EferFlags};
 use crate::cpuid::CPU_INFO;
 use crate::interrupts::{INTERRUPT_CONTROLLER, InterruptController};
-use crate::memory::init_memory_modules;
 use crate::drivers::ps2::{init_ps2_controller};
 use crate::drivers::ps2::keyboard::PS2Keyboard;
 use crate::drivers::ps2::PS2DeviceType::*;
+use crate::memory::MemoryManagementUnit;
 use crate::task::executor::{Executor};
 use crate::task::keyboard::print_key_inputs;
 use crate::task::Task;
@@ -59,11 +59,11 @@ fn init(multiboot_information_address: usize) {
         Cr0::write(Cr0::read() | Cr0Flags::WRITE_PROTECT);
     }
 
-    let (mut allocator, mut active_page_table) = init_memory_modules(boot_info);
+    let mut mmu = MemoryManagementUnit::new(boot_info);
     InterruptController::init_interrupts();
     //init_acpi(boot_info, &mut allocator, &mut active_page_table); // TODO: Fix this
 
-    drivers::pci::ahci::init(&mut allocator, &mut active_page_table);
+    drivers::pci::ahci::init(&mut mmu);
 
     let ps2_devices = init_ps2_controller();
     let mut executor = Executor::new();

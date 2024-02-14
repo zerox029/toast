@@ -2,9 +2,10 @@ use core::ops::DerefMut;
 use crate::arch::multiboot2::BootInformation;
 use crate::memory::page_frame_allocator::PageFrameAllocator;
 use crate::memory::paging::{ActivePageTable, PhysicalAddress};
+use crate::{println, print};
 
 use self::paging::remap_kernel;
-use self::heap_allocator::{init_heap, test_heap};
+use self::heap_allocator::{init_heap};
 
 pub mod page_frame_allocator;
 pub mod paging;
@@ -64,24 +65,34 @@ pub trait FrameAllocator {
     fn deallocate_frame(&mut self, frame: Frame);
 }
 
-pub fn init_memory_modules(boot_information: &BootInformation) -> (PageFrameAllocator, ActivePageTable) {
-    let memory_map = boot_information.memory_map().expect("Memory map tag required");
-    let elf_symbols = boot_information.elf_symbols().expect("Elf symbols tag required");
+pub struct MemoryManagementUnit {
+    pub frame_allocator: PageFrameAllocator,
+    pub active_page_table: ActivePageTable,
+}
 
-    let kernel_start = elf_symbols.section_headers().map(|s| s.start_address()).min().unwrap();
-    let kernel_end = elf_symbols.section_headers().map(|s| s.end_address()).min().unwrap();
+impl MemoryManagementUnit {
+    pub fn new(boot_information: &BootInformation) -> Self {
+        println!("mm: init...");
 
-    let multiboot_start = boot_information.start_address();
-    let multiboot_end = multiboot_start + (boot_information.total_size as usize);
+        let memory_map = boot_information.memory_map().expect("Memory map tag required");
+        let elf_symbols = boot_information.elf_symbols().expect("Elf symbols tag required");
 
-    let mut frame_allocator = PageFrameAllocator::new(kernel_start, kernel_end,
-                                                                      multiboot_start, multiboot_end,
-                                                                      memory_map.entries());
+        let kernel_start = elf_symbols.section_headers().map(|s| s.start_address()).min().unwrap();
+        let kernel_end = elf_symbols.section_headers().map(|s| s.end_address()).min().unwrap();
 
-    let mut active_page_table = remap_kernel(&mut frame_allocator, boot_information);
-    init_heap(active_page_table.deref_mut(), &mut frame_allocator);
+        let multiboot_start = boot_information.start_address();
+        let multiboot_end = multiboot_start + (boot_information.total_size as usize);
 
-    test_heap();
+        let mut frame_allocator = PageFrameAllocator::new(kernel_start, kernel_end,
+                                                          multiboot_start, multiboot_end,
+                                                          memory_map.entries());
 
-    (frame_allocator, active_page_table)
+        let mut active_page_table = remap_kernel(&mut frame_allocator, boot_information);
+        init_heap(active_page_table.deref_mut(), &mut frame_allocator);
+
+        Self {
+            frame_allocator,
+            active_page_table,
+        }
+    }
 }
