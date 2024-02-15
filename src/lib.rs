@@ -65,6 +65,7 @@ fn init(multiboot_information_address: usize) {
     //init_acpi(boot_info, &mut allocator, &mut active_page_table); // TODO: Fix this
 
     let mut ahci_devices = drivers::pci::ahci::init(&mut mmu);
+    println!("{:p}", ahci_devices[0].port_registers);
     mount_filesystem(&mut mmu, &mut ahci_devices[0]);
 
     let ps2_devices = init_ps2_controller();
@@ -88,15 +89,15 @@ fn print_memory_areas(multiboot_information_address: usize) {
     let memory_map = boot_info.memory_map().expect("Memory map tag required");
     let elf_symbols = boot_info.elf_symbols().expect("Elf symbols tag required");
 
-    println!("Memory areas:");
+    serial_println!("Memory areas:");
     for entry in memory_map.entries() {
-        println!("    start: 0x{:x}, length: 0x{:x}",
+        serial_println!("    start: 0x{:x}, length: 0x{:x}",
                  entry.base_addr, entry.size);
     }
 
-    println!("kernel sections:");
+    serial_println!("kernel sections:");
     for section in elf_symbols.section_headers() {
-        println!("    addr: 0x{:x}, size: 0x{:x}, flags: 0x{:x}",
+        serial_println!("    addr: 0x{:x}, size: 0x{:x}, flags: 0x{:x}",
                  section.start_address(), section.size(), section.flags());
     }
 }

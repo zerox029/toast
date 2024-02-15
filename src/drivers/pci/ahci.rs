@@ -34,7 +34,7 @@ const FIS_TYPE_PIO_SETUP: u8   = 0x5F;
 const FIS_TYPE_DEV_BITS: u8     = 0xA1;
 
 
-#[repr(C, packed)]
+#[repr(C)]
 struct FisRegH2D {
     fis_type: u8,   // FIS_TYPE_REG_H2D
 
@@ -61,7 +61,7 @@ struct FisRegH2D {
     rsv1: [u8; 4],  // Reserved
 }
 
-#[repr(C, packed)]
+#[repr(C)]
 struct FisDmaSetup {
     fis_type: u8,       // FIS_TYPE_REG_DMA_SETUP
 
@@ -81,7 +81,7 @@ struct FisDmaSetup {
     rsvd3: u32,         // Reserved
 }
 
-#[repr(C, packed)]
+#[repr(C)]
 struct FisPioSetup {
     fis_type: u8,   // FIS_TYPE_REG_PIO_SETUP
 
@@ -109,7 +109,7 @@ struct FisPioSetup {
     rsv4: u16,  // Reserved
 }
 
-#[repr(C, packed)]
+#[repr(C)]
 struct FisRegD2H {
     fis_type: u8,   // FIS_TYPE_REG_D2H
 
@@ -135,7 +135,7 @@ struct FisRegD2H {
     rsv4: [u8; 4],  // Reserved
 }
 
-#[repr(C, packed)]
+#[repr(C)]
 struct FisSetDeviceBitsD2H {
     typ: u8,
     pmport: u8,
@@ -144,7 +144,7 @@ struct FisSetDeviceBitsD2H {
     protocol_specifi: u32,
 }
 
-#[repr(C, packed)]
+#[repr(C)]
 struct ReceivedFis {
     dsfis: FisDmaSetup,
     rsv1: [u8; 0x20 - 0x1C],
@@ -157,7 +157,7 @@ struct ReceivedFis {
     rsv4: [u8; 0xFF - 0xA0],
 }
 
-#[repr(C, packed)]
+#[repr(C)]
 #[derive(Debug)]
 struct HbaMemoryRegisters {
     // 0x00 - 0x2B, Generic Host Control
@@ -180,7 +180,7 @@ struct HbaMemoryRegisters {
     vendor: [u8; 0x100-0xA1],
 }
 
-#[repr(C, packed)]
+#[repr(C)]
 #[derive(Debug)]
 pub struct PortRegisters {
     clb: u32,
@@ -213,8 +213,7 @@ pub struct PortRegisters {
 
 
 type CommandList = [CommandHeader; 32];
-#[repr(C, packed)]
-#[derive(Debug)]
+#[repr(C)]
 struct CommandHeader {
     flags: u16,
     prdtl: u16,
@@ -224,7 +223,7 @@ struct CommandHeader {
     reserved: [u32; 4],
 }
 
-#[repr(C, packed)]
+#[repr(C)]
 struct CommandTable {
     cfis: [u8; 64], // Command FIS
     acmd: [u8; 16], // ATAPI command, 12 or 16 bytes
@@ -232,7 +231,7 @@ struct CommandTable {
     first_prdt_entry: PrdtEntry,
 }
 
-#[repr(C, packed)]
+#[repr(C)]
 struct PrdtEntry {
     dba: u32,
     dbau: u32,
@@ -368,7 +367,7 @@ struct AHCIIdentifyResponse {
     integrity: u16,          /* Cheksum, Signature */
 }
 
-#[derive(Debug)]
+#[derive(Debug, Copy, Clone)]
 struct AHCIController {
     pci_device: PCIDevice,
 
@@ -423,18 +422,18 @@ impl AHCIController {
 
 #[derive(Debug)]
 pub struct AHCIDevice {
-    controller: *const AHCIController,
+    controller: AHCIController,
     port_index: usize,
 
     identity: Option<AHCIIdentifyResponse>,
 
-    port_registers: &'static mut PortRegisters,
+    pub port_registers: &'static mut PortRegisters,
 
     command_list: [AHCICommand; 32],
 }
 
 impl AHCIDevice {
-    fn new(controller: *const AHCIController, port_index: usize, port_address: usize) -> Self {
+    fn new(controller: AHCIController, port_index: usize, port_address: usize) -> Self {
         let port_registers = unsafe { &mut *(port_address as *mut PortRegisters) };
 
         Self {
@@ -609,8 +608,7 @@ impl AHCIDevice {
     }
 
     fn allocate_slot(&mut self) -> usize {
-        let controller = unsafe{ &*self.controller };
-        let slot_count = controller.slot_count;
+        let slot_count = self.controller.slot_count;
 
         for i in 0..slot_count {
             // Find the first empty command slot
@@ -741,7 +739,7 @@ pub fn init(mmu: &mut MemoryManagementUnit) -> Vec<AHCIDevice> {
     let mut devices = Vec::new();
     for port in 0..ahci_controller.port_count as usize {
         if is_nth_bit_set(ahci_controller.hba.pi as usize, port) {
-            let device = init_port(mmu, &ahci_controller, port, ahci_controller.bar5 as usize + 0x100 + port * 0x80);
+            let device = init_port(mmu, &ahci_controller, port, ahci_controller.bar5 as usize + (0x100 + port * 0x80));
             if device.is_some() {
                 devices.push(device.unwrap());
             }
@@ -752,7 +750,7 @@ pub fn init(mmu: &mut MemoryManagementUnit) -> Vec<AHCIDevice> {
 }
 
 fn init_port(mmu: &mut MemoryManagementUnit, controller: &AHCIController, port_index: usize, port_address: usize) -> Option<AHCIDevice> {
-    let mut ahci_device = AHCIDevice::new(controller as *const AHCIController, port_index, port_address);
+    let mut ahci_device = AHCIDevice::new(controller.clone(), port_index, port_address);
 
     match ahci_device.port_registers.sig {
         SATA_SIG_ATA => println!("ahci: sata drive found on port {}", port_index),
@@ -805,6 +803,8 @@ fn init_port(mmu: &mut MemoryManagementUnit, controller: &AHCIController, port_i
 
     let sata_identify = unsafe{&*(identity_address as *mut AHCIIdentifyResponse)};
     ahci_device.identity = Some(sata_identify.clone());
+
+    println!("{:p}", ahci_device.port_registers);
 
     // TODO: Deallocate the memory
 

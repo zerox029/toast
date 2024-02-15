@@ -177,7 +177,6 @@ pub fn mount_filesystem(mmu: &mut MemoryManagementUnit, drive: &mut AHCIDevice) 
 
     assert_eq!(superblock.ext2_signature, EXT2_SIGNATURE);
     println!("ext2: successfully identified EXT2 signature 0x{:X}", superblock.ext2_signature);
-    //let block_group_descriptor_table_position = if
 
-    // superblock should now be loaded with the contents in the drive
+    println!("Block size: {}", superblock.log_block_size);
 }
