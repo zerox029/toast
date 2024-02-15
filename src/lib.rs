@@ -24,6 +24,7 @@ use crate::interrupts::{INTERRUPT_CONTROLLER, InterruptController};
 use crate::drivers::ps2::{init_ps2_controller};
 use crate::drivers::ps2::keyboard::PS2Keyboard;
 use crate::drivers::ps2::PS2DeviceType::*;
+use crate::fs::ext2::mount_filesystem;
 use crate::memory::MemoryManagementUnit;
 use crate::task::executor::{Executor};
 use crate::task::keyboard::print_key_inputs;
@@ -63,7 +64,8 @@ fn init(multiboot_information_address: usize) {
     InterruptController::init_interrupts();
     //init_acpi(boot_info, &mut allocator, &mut active_page_table); // TODO: Fix this
 
-    drivers::pci::ahci::init(&mut mmu);
+    let mut ahci_devices = drivers::pci::ahci::init(&mut mmu);
+    mount_filesystem(&mut mmu, &mut ahci_devices[0]);
 
     let ps2_devices = init_ps2_controller();
     let mut executor = Executor::new();

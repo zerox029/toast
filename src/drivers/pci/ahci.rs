@@ -5,12 +5,13 @@
 // Command definitions:
 // https://tc.gts3.org/cs3210/2016/spring/r/hardware/ATA8-ACS.pdf
 
+use alloc::vec::Vec;
 use core::arch::asm;
 use core::ffi::c_void;
 use core::mem::size_of;
 use core::ops::DerefMut;
 use core::ptr;
-use crate::{println, print};
+use crate::{println, print, serial_println};
 use crate::drivers::pci::{find_all_pci_devices, PCIDevice};
 use crate::memory::{Frame, MemoryManagementUnit};
 use crate::memory::paging::entry::EntryFlags;
@@ -241,7 +242,8 @@ struct PrdtEntry {
 
 // http://www.usedsite.co.kr/pds/file/SerialATA_Revision_3_0_RC11.pdf pp.479
 #[repr(C)]
-struct IdentifyResponse {
+#[derive(Debug, Copy, Clone)]
+struct AHCIIdentifyResponse {
     config: u16,      /* lots of obsolete bit flags */
     cyls: u16,      /* obsolete */
     reserved2: u16,   /* special config */
@@ -416,23 +418,15 @@ impl AHCIController {
         }
 
         // TODO
-
-        /*
-        let mut bohc_address = self.bar5 + 0x28;
-        let bohc_pointer = bohc_address as *mut u32;
-
-        unsafe { core::ptr::write(bohc_pointer, self.hba.bohc | 2) };*/
     }
 }
 
 #[derive(Debug)]
-struct AHCIDevice {
+pub struct AHCIDevice {
     controller: *const AHCIController,
     port_index: usize,
 
-    serial_number: [u8; 20],
-    firmware_revision: [u8; 8],
-    model_number: [u8; 40],
+    identity: Option<AHCIIdentifyResponse>,
 
     port_registers: &'static mut PortRegisters,
 
@@ -447,9 +441,7 @@ impl AHCIDevice {
             controller,
             port_index,
 
-            serial_number: [0; 20],
-            firmware_revision: [0; 8],
-            model_number: [0; 40],
+            identity: None,
 
             port_registers,
 
@@ -457,24 +449,53 @@ impl AHCIDevice {
         }
     }
 
-    /*
-    /// Reads byte_count bytes from the device at address offset
-    pub fn read_from_device(&mut self, offset: u64, byte_count: u64, buffer: *mut c_void) {
-        let frame = allocator.allocate_frame().expect("Could not allocate the memory");
-        let read_buffer_address = frame.start_address();
-        active_page_table.deref_mut().identity_map(frame, EntryFlags::WRITABLE, allocator);
+    /// Reads byte_count bytes from the device at address offset. Returns the number of bytes reads from the device
+    pub fn read_from_device(&mut self, mmu: &mut MemoryManagementUnit, byte_offset: u64, byte_count: u64, buffer: *mut c_void) -> usize {
+        let identity = &self.identity.expect("ahci: cannot read from an unidentified device");
+        let sector_size = identity.sector_bytes as u64;
 
-        ahci_device.issue_read(0, 1, read_buffer_address as *mut c_void);
-        println!("Read data \"{}\" at sector 0", unsafe{*(read_buffer_address as *mut u128)})
+        let start_sector = byte_offset / sector_size;
+        let mut sector_count = byte_count.div_ceil(sector_size);
+
+        if byte_count % sector_size == 0 && byte_offset % sector_size != 0 {
+            sector_count += 1;
+        }
+        if byte_offset % sector_size + sector_count > sector_size {
+            sector_count += 1;
+        }
+
+        if sector_count == 0 {
+            return 0;
+        }
+
+        let frame = mmu.frame_allocator.allocate_frame().expect("ahci: could not allocate the memory for device read");
+        let read_buffer_address = frame.start_address();
+        mmu.active_page_table.deref_mut().identity_map(frame, EntryFlags::WRITABLE, &mut mmu.frame_allocator);
+
+        let read_sectors = self.issue_read(start_sector, sector_count, read_buffer_address as *mut c_void);
+
+        unsafe { ptr::copy_nonoverlapping(read_buffer_address as *const c_void, buffer, byte_count as usize); }
 
         // TODO: Deallocate the frame
+
+        serial_println!("Read sectors: {}   Byte count: {}", read_sectors, byte_count);
+        read_sectors - read_sectors.abs_diff(byte_count as usize)
     }
 
     pub fn write_to_device() {
+        /*
+        let write_buffer_frame = allocator.allocate_frame().expect("Could not allocate the memory");
+        let write_buffer_address = write_buffer_frame.start_address();
+        active_page_table.deref_mut().identity_map(write_buffer_frame, EntryFlags::WRITABLE, allocator);
 
-    }*/
+        unsafe { ptr::write(write_buffer_address as *mut u32, 123456); }
 
-    fn issue_identify(&mut self, identity: *mut IdentifyResponse) {
+        println!("Writing 123456 at sector 0");
+        ahci_device.issue_write(0, 1, write_buffer_address as *mut c_void);
+        */
+    }
+
+    fn issue_identify(&mut self, identity: *mut AHCIIdentifyResponse) {
         let command_number = self.allocate_slot();
 
         {
@@ -502,45 +523,48 @@ impl AHCIDevice {
         self.issue_command(command_number);
     }
 
-    /// Reads sector_count amount of sectors from the device and writes it to buffer
-    fn issue_read(&mut self, sector_offset: u64, sector_count: u64, buffer: *mut c_void) {
+    /// Reads sector_count amount of sectors from the device and writes it to buffer. Returns the amount of sectors read from the device
+    fn issue_read(&mut self, sector_offset: u64, sector_count: u64, buffer: *mut c_void) -> usize {
         let command_number = self.allocate_slot();
 
-        {
-            let command = &mut self.command_list[command_number];
+        let command = &mut self.command_list[command_number];
 
-            command.destination_address = buffer;
-            command.data_length = (sector_count * 0x200 - 1) as usize;
-            command.interrupt = false;
+        command.destination_address = buffer;
+        command.data_length = (sector_count * 0x200 - 1) as usize;
+        command.interrupt = false;
 
-            let command_header = unsafe{ &mut *command.command_header };
-            command_header.flags &= !(0b11111 | (1 << 6));
-            command_header.flags |= (size_of::<FisRegH2D>() / 4) as u16;
-            command_header.prdtl = 1;
-            command_header.reserved = [0; 4];
+        let command_header = unsafe{ &mut *command.command_header };
+        command_header.flags &= !(0b11111 | (1 << 6));
+        command_header.flags |= (size_of::<FisRegH2D>() / 4) as u16;
+        command_header.prdtl = 1;
+        command_header.reserved = [0; 4];
 
-            let command_table = unsafe{ &mut *command.command_table };
-            let command_pointer = &mut command_table.cfis;
+        let command_table = unsafe{ &mut *command.command_table };
+        let command_pointer = &mut command_table.cfis;
 
-            command_pointer.fill(0);
-            command_pointer[0] = FIS_TYPE_REG_H2D; // FIS_TYPE
-            command_pointer[1] = 1 << 7; // flags
-            command_pointer[2] = 0x25; // command
-            command_pointer[7] = 1 << 6; // device
+        command_pointer.fill(0);
+        command_pointer[0] = FIS_TYPE_REG_H2D; // FIS_TYPE
+        command_pointer[1] = 1 << 7; // flags
+        command_pointer[2] = 0x25; // command
+        command_pointer[7] = 1 << 6; // device
 
-            command_pointer[4] = sector_offset as u8; // LBA0
-            command_pointer[5] = (sector_offset >> 8) as u8; // LBA1
-            command_pointer[6] = (sector_offset >> 16) as u8; // LBA2
-            command_pointer[8] = (sector_offset >> 24) as u8; // LBA3
-            command_pointer[9] = (sector_offset >> 32) as u8; // LBA4
-            command_pointer[10] = (sector_offset >> 40) as u8; // LBA5
+        command_pointer[4] = sector_offset as u8; // LBA0
+        command_pointer[5] = (sector_offset >> 8) as u8; // LBA1
+        command_pointer[6] = (sector_offset >> 16) as u8; // LBA2
+        command_pointer[8] = (sector_offset >> 24) as u8; // LBA3
+        command_pointer[9] = (sector_offset >> 32) as u8; // LBA4
+        command_pointer[10] = (sector_offset >> 40) as u8; // LBA5
 
-            command_pointer[12] = (sector_count >> 0) as u8; // countl
-            command_pointer[13] = (sector_count >> 8) as u8; // counth
-        }
+        command_pointer[12] = (sector_count >> 0) as u8; // countl
+        command_pointer[13] = (sector_count >> 8) as u8; // counth
 
         self.init_prdt(command_number);
         self.issue_command(command_number);
+
+        let p = command_header.prdbc;
+        serial_println!("prdbc: {}   sector bytes: {}", p, self.identity.unwrap().sector_bytes);
+
+        command_header.prdbc as usize
     }
 
     /// Writes sector_count amount of sectors from the buffer and writes it to the device
@@ -694,7 +718,7 @@ impl AHCICommand {
     }
 }
 
-pub fn init(mmu: &mut MemoryManagementUnit) {
+pub fn init(mmu: &mut MemoryManagementUnit) -> Vec<AHCIDevice> {
     println!("ahci: init...");
 
     let ahci_pci_device = find_all_pci_devices().into_iter().find(is_ahci_controller).expect("ahci: could not locate the ahci controller");
@@ -714,14 +738,20 @@ pub fn init(mmu: &mut MemoryManagementUnit) {
     ahci_controller.bios_os_handoff();
 
     // Initialize ports
+    let mut devices = Vec::new();
     for port in 0..ahci_controller.port_count as usize {
         if is_nth_bit_set(ahci_controller.hba.pi as usize, port) {
-            init_port(mmu, &ahci_controller, port, ahci_controller.bar5 as usize + 0x100 + port * 0x80);
+            let device = init_port(mmu, &ahci_controller, port, ahci_controller.bar5 as usize + 0x100 + port * 0x80);
+            if device.is_some() {
+                devices.push(device.unwrap());
+            }
         }
     }
+
+    devices
 }
 
-fn init_port(mmu: &mut MemoryManagementUnit, controller: &AHCIController, port_index: usize, port_address: usize) {
+fn init_port(mmu: &mut MemoryManagementUnit, controller: &AHCIController, port_index: usize, port_address: usize) -> Option<AHCIDevice> {
     let mut ahci_device = AHCIDevice::new(controller as *const AHCIController, port_index, port_address);
 
     match ahci_device.port_registers.sig {
@@ -729,12 +759,13 @@ fn init_port(mmu: &mut MemoryManagementUnit, controller: &AHCIController, port_i
         SATA_SIG_ATAPI => println!("ahci: satapi drive found on port {}", port_index),
         SATA_SIG_SEMB => println!("ahci: enclosure management bridge found on port {}", port_index),
         SATA_SIG_PM => println!("ahci: port multiplier found on port {}", port_index),
-        _ => return
+        _ => return None
     }
 
     // TODO: Allocate memory for these more efficiently, no need to allocate a new frame every time
     // Allocate physical memory for the command list
-    let command_list_frame = mmu.frame_allocator.allocate_frame().expect("Could not allocate the memory");
+    let command_list_frame = mmu.frame_allocator.allocate_frame()
+        .unwrap_or_else(|| panic!("ahci: could not allocate the memory for the command list on port {}", port_index));
     let command_list_base = command_list_frame.start_address();
     mmu.active_page_table.deref_mut().identity_map(command_list_frame, EntryFlags::WRITABLE | EntryFlags::NO_CACHE, &mut mmu.frame_allocator);
 
@@ -746,7 +777,8 @@ fn init_port(mmu: &mut MemoryManagementUnit, controller: &AHCIController, port_i
         let header_address = command_list_base + i * size_of::<CommandHeader>();
         let command_header = unsafe{ &mut *(header_address as *mut CommandHeader) };
 
-        let command_table_frame = mmu.frame_allocator.allocate_frame().expect("Could not allocate the memory");
+        let command_table_frame = mmu.frame_allocator.allocate_frame()
+            .unwrap_or_else(|| panic!("ahci: could not allocate the memory for the command table {} on port {}", i, port_index));
         let command_table_base_address = command_table_frame.start_address();
         mmu.active_page_table.deref_mut().identity_map(command_table_frame, EntryFlags::WRITABLE | EntryFlags::NO_CACHE, &mut mmu.frame_allocator);
 
@@ -755,7 +787,8 @@ fn init_port(mmu: &mut MemoryManagementUnit, controller: &AHCIController, port_i
     }
 
     // Allocate physical memory for the received FIS
-    let fis_base_frame = mmu.frame_allocator.allocate_frame().expect("Could not allocate the memory");
+    let fis_base_frame = mmu.frame_allocator.allocate_frame()
+        .unwrap_or_else(|| panic!("ahci: could not allocate the memory for the FIS on port {}", port_index));
     let fis_base_base_address = fis_base_frame.start_address();
     mmu.active_page_table.deref_mut().identity_map(fis_base_frame, EntryFlags::WRITABLE | EntryFlags::NO_CACHE, &mut mmu.frame_allocator);
     ahci_device.port_registers.fb = fis_base_base_address as u32;
@@ -764,25 +797,18 @@ fn init_port(mmu: &mut MemoryManagementUnit, controller: &AHCIController, port_i
     // Setting start and FIS receive enable flags
     ahci_device.port_registers.cmd |= (1 << 0) | (1 << 4);
 
-    let identity = mmu.frame_allocator.allocate_frame().expect("Could not allocate the memory");
+    let identity = mmu.frame_allocator.allocate_frame().expect("ahci: could not allocate the memory for device identification");
     let identity_address = identity.start_address();
     mmu.active_page_table.deref_mut().identity_map(identity, EntryFlags::WRITABLE | EntryFlags::NO_CACHE, &mut mmu.frame_allocator);
 
-    ahci_device.issue_identify(identity_address as *mut IdentifyResponse);
+    ahci_device.issue_identify(identity_address as *mut AHCIIdentifyResponse);
 
-    let sata_identify = unsafe{&*(identity_address as *mut IdentifyResponse)};
-    println!("ahci: found a {}MB drive on port 0", sata_identify.lba_capacity * sata_identify.sector_bytes as u32 / 1048576);
+    let sata_identify = unsafe{&*(identity_address as *mut AHCIIdentifyResponse)};
+    ahci_device.identity = Some(sata_identify.clone());
 
-    /*
-    let write_buffer_frame = allocator.allocate_frame().expect("Could not allocate the memory");
-    let write_buffer_address = write_buffer_frame.start_address();
-    active_page_table.deref_mut().identity_map(write_buffer_frame, EntryFlags::WRITABLE, allocator);
+    // TODO: Deallocate the memory
 
-    unsafe { ptr::write(write_buffer_address as *mut u32, 123456); }
-
-    println!("Writing 123456 at sector 0");
-    ahci_device.issue_write(0, 1, write_buffer_address as *mut c_void);
-    */
+    Some(ahci_device)
 }
 
 fn is_ahci_controller(device: &PCIDevice) -> bool {
