@@ -16,6 +16,7 @@ uart_16550 = "0.3.0"
 bitflags = "2.4.2"
 linked_list_allocator = "0.9.0"
 cortex-m = "0.7.7"
+volatile-register = "0.2.2"
 
 [dependencies.lazy_static]
 version = "1.0"

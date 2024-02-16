@@ -65,7 +65,6 @@ fn init(multiboot_information_address: usize) {
     //init_acpi(boot_info, &mut allocator, &mut active_page_table); // TODO: Fix this
 
     let mut ahci_devices = drivers::pci::ahci::init(&mut mmu);
-    println!("{:p}", ahci_devices[0].port_registers);
     mount_filesystem(&mut mmu, &mut ahci_devices[0]);
 
     let ps2_devices = init_ps2_controller();

@@ -804,8 +804,6 @@ fn init_port(mmu: &mut MemoryManagementUnit, controller: &AHCIController, port_i
     let sata_identify = unsafe{&*(identity_address as *mut AHCIIdentifyResponse)};
     ahci_device.identity = Some(sata_identify.clone());
 
-    println!("{:p}", ahci_device.port_registers);
-
     // TODO: Deallocate the memory
 
     Some(ahci_device)
