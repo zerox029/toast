@@ -3,9 +3,10 @@ use core::mem::{MaybeUninit, size_of};
 use bitflags::bitflags;
 use volatile_register::RO;
 use crate::drivers::pci::ahci::AHCIDevice;
-use crate::fs::ext2::EXT2_SIGNATURE;
 use crate::memory::MemoryManagementUnit;
+use crate::{println, print, serial_println};
 
+const EXT2_SIGNATURE: u16 = 0xEF53;
 const SUPERBLOCK_OFFSET: u16 = 1024;
 
 #[repr(C)]
@@ -144,6 +145,34 @@ pub(crate) struct Superblock {
     pub(crate) first_meta_bg: RO<u32>,
     _unused: RO<[u8; 760]>,
 }
+impl Superblock {
+    pub(crate) fn read_from_disk(mmu: &mut MemoryManagementUnit, drive: &mut AHCIDevice) -> Superblock {
+        let mut superblock = MaybeUninit::<Superblock>::uninit();
+
+        drive.read_from_device(mmu, SUPERBLOCK_OFFSET as u64, size_of::<Superblock>() as u64, superblock.as_mut_ptr() as *mut c_void);
+        let superblock = unsafe { superblock.assume_init() };
+
+        assert_eq!(superblock.ext2_signature.read(), EXT2_SIGNATURE);
+
+        superblock
+    }
+
+    pub(crate) fn block_group_count(&self) -> usize {
+        let count_from_blocks = self.block_count.read().div_ceil(self.block_group_block_count.read()) as usize;
+        let count_from_inodes = self.inode_count.read().div_ceil(self.block_group_inode_count.read()) as usize;
+
+        assert_eq!(count_from_blocks, count_from_inodes);
+
+        count_from_blocks
+    }
+
+    pub(crate) fn inode_size(&self) -> u16 {
+        match self.version_major.read() {
+            RevisionLevel::GoodOldRevision => 128,
+            RevisionLevel::Dynamicrevision => self.inode_byte_size.read()
+        }
+    }
+}
 
 #[repr(u16)]
 #[derive(Copy, Clone)]
@@ -214,61 +243,38 @@ bitflags! {
     }
 }
 
-impl Superblock {
-    pub(crate) fn read_from_disk(mmu: &mut MemoryManagementUnit, drive: &mut AHCIDevice) -> Superblock {
-        let mut superblock = MaybeUninit::<Superblock>::uninit();
-
-        drive.read_from_device(mmu, SUPERBLOCK_OFFSET as u64, size_of::<Superblock>() as u64, superblock.as_mut_ptr() as *mut c_void);
-        let superblock = unsafe { superblock.assume_init() };
-
-        assert_eq!(superblock.ext2_signature.read(), EXT2_SIGNATURE);
-
-        superblock
-    }
-
-    pub(crate) fn block_group_count(&self) -> usize {
-        let count_from_blocks = self.block_count.read().div_ceil(self.block_group_block_count.read()) as usize;
-        let count_from_inodes = self.inode_count.read().div_ceil(self.block_group_inode_count.read()) as usize;
-
-        assert_eq!(count_from_blocks, count_from_inodes);
-
-        count_from_blocks
-    }
-}
-
-#[repr(C)]
-pub(crate) struct BlockGroupDescriptorTable(pub(crate)  [BlockGroupDescriptor; 1]);
 #[repr(C)]
 pub(crate) struct BlockGroupDescriptor {
     /// 32bit block id of the first block of the “block bitmap” for the group represented.
     /// The actual block bitmap is located within its own allocated blocks starting at the block ID specified by
     /// this value.
-    pub(crate) block_bitmap: u32,
+    pub(crate) block_bitmap: RO<u32>,
     /// 32bit block id of the first block of the “inode bitmap” for the group represented.
-    pub(crate) inode_usage_bitmap_address: u32,
+    pub(crate) inode_usage_bitmap_address: RO<u32>,
     /// 32bit block id of the first block of the “inode table” for the group represented
-    pub(crate) inode_table_block_address: u32,
+    pub(crate) inode_table_block_address: RO<u32>,
     /// 16bit value indicating the total number of free blocks for the represented group.
-    pub(crate) unallocated_block_count: u16,
+    pub(crate) unallocated_block_count: RO<u16>,
     /// 16bit value indicating the total number of free inodes for the represented group.
-    pub(crate) unallocated_inode_count: u16,
+    pub(crate) unallocated_inode_count: RO<u16>,
     /// 16bit value indicating the number of inodes allocated to directories for the represented group.
-    pub(crate) directory_count: u16,
+    pub(crate) directory_count: RO<u16>,
 
     /// 16bit value used for padding the structure on a 32bit boundary.
-    _pad: u16,
+    _pad: RO<u16>,
     /// 12 bytes of reserved space for future revisions
-    _reserved: [u8; 12],
+    _reserved: RO<[u8; 12]>,
 }
 
-impl BlockGroupDescriptorTable {
-    pub(crate) fn read_from_disk(mmu: &mut MemoryManagementUnit, drive: &mut AHCIDevice, superblock: &Superblock) -> BlockGroupDescriptorTable {
-        let offset = (1024 << superblock.log_block_size.read()) * if superblock.log_block_size.read() == 1 { 3 } else { 2 };
+impl BlockGroupDescriptor {
+    pub(crate) fn read_table_entry(mmu: &mut MemoryManagementUnit, drive: &mut AHCIDevice, superblock: &Superblock, index: usize) -> Self {
+        let first_entry_address = (1024 << superblock.log_block_size.read()) * if superblock.log_block_size.read() == 0 { 2 } else { 1 };
+        let offset = first_entry_address + index * size_of::<BlockGroupDescriptor>();
 
-        let mut table = MaybeUninit::<BlockGroupDescriptorTable>::uninit();
-        drive.read_from_device(mmu, offset as u64, size_of::<BlockGroupDescriptorTable>() as u64, table.as_mut_ptr() as *mut c_void);
-        let table = unsafe { table.assume_init() };
+        let mut entry = MaybeUninit::<BlockGroupDescriptor>::uninit();
+        drive.read_from_device(mmu, offset as u64, size_of::<BlockGroupDescriptor>() as u64, entry.as_mut_ptr() as *mut c_void);
+        let entry = unsafe { entry.assume_init() };
 
-        table
+        entry
     }
 }

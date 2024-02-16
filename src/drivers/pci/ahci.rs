@@ -477,7 +477,7 @@ impl AHCIDevice {
 
         // TODO: Deallocate the frame
 
-        serial_println!("Read sectors: {}   Byte count: {}", read_sectors, byte_count);
+        serial_println!("ahci: read sectors: {}   byte count: {}", read_sectors, byte_count);
         read_sectors - read_sectors.abs_diff(byte_count as usize)
     }
 
@@ -561,7 +561,7 @@ impl AHCIDevice {
         self.issue_command(command_number);
 
         let p = command_header.prdbc;
-        serial_println!("prdbc: {}   sector bytes: {}", p, self.identity.unwrap().sector_bytes);
+        serial_println!("ahci: prdbc: {}   sector bytes: {}", p, self.identity.unwrap().sector_bytes);
 
         command_header.prdbc as usize
     }
