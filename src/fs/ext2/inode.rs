@@ -14,7 +14,7 @@ pub(crate) struct InodeTable {
 #[repr(C)]
 pub(crate) struct Inode {
     /// 16bit value used to indicate the format of the described file and the access rights.
-    pub(crate) mode: RO<u16>,
+    pub(crate) mode: RO<InodeMode>,
     /// 16bit user id associated with the file.
     pub(crate) uid: RO<u16>,
     /// In revision 0, (signed) 32bit value indicating the size of the file in bytes. In revision 1 and later revisions,
@@ -122,20 +122,27 @@ bitflags! {
 impl Inode {
     pub(crate) fn read_from_disk(mmu: &mut MemoryManagementUnit, drive: &mut AHCIDevice, superblock: &Superblock, inode_id: usize) -> Self {
         let group_id = Inode::get_containing_block_group_id(&superblock, inode_id);
-        let inode_index = Self::get_local_table_index(&superblock, inode_id) - 1;
+        let inode_index = Self::get_local_table_index(&superblock, inode_id);
 
         let block_group_descriptor = BlockGroupDescriptor::read_table_entry(mmu, drive, &superblock, group_id);
         let table_address = block_group_descriptor.inode_table_block_address.read();
 
-        serial_println!("inode table: {}", block_group_descriptor.inode_table_block_address.read());
+        serial_println!("inode table at block {}", block_group_descriptor.inode_table_block_address.read());
+        serial_println!("inode size: {} bytes", superblock.inode_size());
+        serial_println!("block size: {} bytes", 1024 << superblock.log_block_size.read());
 
-        let inode_address = (table_address as usize + inode_index) * (1024 << superblock.log_block_size.read());
+        let containing_block = inode_index * superblock.inode_size() as usize / (1024 << superblock.log_block_size.read()) as usize;
 
-        serial_println!("inode address: {}", table_address as usize + inode_index);
-        serial_println!("inode address bytes: {}", inode_address);
+        serial_println!("containing block: {}", containing_block);
+
+        let inode_address = table_address as usize + containing_block; // block
+        let inode_address_bytes = inode_address * (1024 << superblock.log_block_size.read()) + 1 * superblock.inode_size() as usize;
+
+        serial_println!("inode address: block {}", inode_address);
+        serial_println!("inode byte: byte {}", inode_address_bytes);
 
         let mut inode = MaybeUninit::<Inode>::uninit();
-        drive.read_from_device(mmu, inode_address as u64, size_of::<Inode>() as u64, inode.as_mut_ptr() as *mut c_void);
+        drive.read_from_device(mmu, inode_address_bytes as u64, size_of::<Inode>() as u64, inode.as_mut_ptr() as *mut c_void);
         unsafe { inode.assume_init() }
     }
 

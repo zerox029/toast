@@ -467,17 +467,19 @@ impl AHCIDevice {
             return 0;
         }
 
+        serial_println!("start sector: {} sector size: {}", start_sector, sector_size);
+
         let frame = mmu.frame_allocator.allocate_frame().expect("ahci: could not allocate the memory for device read");
         let read_buffer_address = frame.start_address();
         mmu.active_page_table.deref_mut().identity_map(frame, EntryFlags::WRITABLE, &mut mmu.frame_allocator);
 
         let read_sectors = self.issue_read(start_sector, sector_count, read_buffer_address as *mut c_void);
 
-        unsafe { ptr::copy_nonoverlapping(read_buffer_address as *const c_void, buffer, byte_count as usize); }
+        unsafe { ptr::copy_nonoverlapping((read_buffer_address + (byte_offset % sector_size) as usize) as *const c_void, buffer, byte_count as usize); }
 
         // TODO: Deallocate the frame
 
-        serial_println!("ahci: read sectors: {}   byte count: {}", read_sectors, byte_count);
+
         read_sectors - read_sectors.abs_diff(byte_count as usize)
     }
 
@@ -559,9 +561,6 @@ impl AHCIDevice {
 
         self.init_prdt(command_number);
         self.issue_command(command_number);
-
-        let p = command_header.prdbc;
-        serial_println!("ahci: prdbc: {}   sector bytes: {}", p, self.identity.unwrap().sector_bytes);
 
         command_header.prdbc as usize
     }
