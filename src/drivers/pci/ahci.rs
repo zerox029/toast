@@ -467,8 +467,6 @@ impl AHCIDevice {
             return 0;
         }
 
-        serial_println!("start sector: {} sector size: {}", start_sector, sector_size);
-
         let frame = mmu.frame_allocator.allocate_frame().expect("ahci: could not allocate the memory for device read");
         let read_buffer_address = frame.start_address();
         mmu.active_page_table.deref_mut().identity_map(frame, EntryFlags::WRITABLE, &mut mmu.frame_allocator);
