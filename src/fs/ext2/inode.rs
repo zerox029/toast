@@ -4,9 +4,9 @@ use bitflags::bitflags;
 use volatile_register::RO;
 use crate::drivers::pci::ahci::AHCIDevice;
 use crate::fs::ext2::block::{BlockGroupDescriptor, Superblock};
-use crate::fs::ext2::directory::{DirectoryEntry, FileType};
+use crate::fs::ext2::directory::{DirectoryEntry};
 use crate::memory::MemoryManagementUnit;
-use crate::{println, serial_println};
+use crate::{print, println};
 
 pub(crate) struct InodeTable {
 
@@ -122,10 +122,10 @@ bitflags! {
 
 impl Inode {
     pub(crate) fn get_from_id(mmu: &mut MemoryManagementUnit, drive: &mut AHCIDevice, superblock: &Superblock, inode_id: usize) -> Self {
-        let group_id = Inode::get_containing_block_group_id(&superblock, inode_id);
-        let inode_index = Self::get_local_table_index(&superblock, inode_id);
+        let group_id = Inode::get_containing_block_group_id(superblock, inode_id);
+        let inode_index = Self::get_local_table_index(superblock, inode_id);
 
-        let block_group_descriptor = BlockGroupDescriptor::read_table_entry(mmu, drive, &superblock, group_id);
+        let block_group_descriptor = BlockGroupDescriptor::read_table_entry(mmu, drive, superblock, group_id);
         let table_address = block_group_descriptor.inode_table_block_address.read();
 
         let containing_block = inode_index * superblock.inode_size() as usize / (1024 << superblock.log_block_size.read()) as usize;
@@ -139,27 +139,28 @@ impl Inode {
     }
 
     pub(crate) fn print_content(&self, mmu: &mut MemoryManagementUnit, drive: &mut AHCIDevice, superblock: &Superblock) {
-        let mut traversed_size = 0;
-        serial_println!("total size: {}", self.size.read());
+        let initial_address = self.block.read()[0] * (1024 << superblock.log_block_size.read());
+        let mut file_address = initial_address;
 
-        let mut directory_address = self.block.read()[0] * (1024 << superblock.log_block_size.read());
+        // TODO: Support multi block files
+        // Read the content of the pointed block
+        loop {
+            let mut file = MaybeUninit::<DirectoryEntry>::uninit();
+            drive.read_from_device(mmu, file_address as u64, size_of::<DirectoryEntry>() as u64, file.as_mut_ptr() as *mut c_void);
+            let file = unsafe { file.assume_init() };
 
-        let mut dir_uninit = MaybeUninit::<DirectoryEntry>::uninit();
-        drive.read_from_device(mmu, directory_address as u64, size_of::<DirectoryEntry>() as u64, dir_uninit.as_mut_ptr() as *mut c_void);
-        let mut dir = unsafe { dir_uninit.assume_init() };
+            file.name();
+            print!(" ");
 
-        dir.name();
+            file_address += file.rec_len.read() as u32;
 
-        while traversed_size < 45 {
-            traversed_size += dir.rec_len.read() as u32;
-            directory_address += dir.rec_len.read() as u32;
-
-            dir_uninit = MaybeUninit::<DirectoryEntry>::uninit();
-            drive.read_from_device(mmu, directory_address as u64, size_of::<DirectoryEntry>() as u64, dir_uninit.as_mut_ptr() as *mut c_void);
-            dir = unsafe { dir_uninit.assume_init() };
-
-            dir.name();
+            // Break if the next file is outside the current block
+            if file_address - initial_address >= (1024 << superblock.log_block_size.read()) {
+                break;
+            }
         }
+
+        println!("");
     }
 
     pub(crate) fn get_containing_block_group_id(superblock: &Superblock, inode_id: usize) -> usize {

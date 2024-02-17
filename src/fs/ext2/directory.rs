@@ -1,8 +1,6 @@
-use alloc::string::String;
-use core::ffi::c_void;
-use core::mem::{MaybeUninit, size_of};
 use volatile_register::RO;
-use crate::{print, println};
+use crate::{print};
+use crate::fs::ext2::directory::FileType::Directory;
 
 #[repr(C)]
 pub(crate) struct DirectoryEntry {
@@ -24,9 +22,10 @@ pub(crate) struct DirectoryEntry {
 }
 impl DirectoryEntry {
     pub(crate) fn name(&self) {
-        print!(" - ");
         self.name.read()[0..(self.name_len.read() as usize)].iter().for_each(|&c| print!("{}", c as char));
-        println!("");
+        if self.file_type.read() == Directory {
+            print!("/");
+        }
     }
 }
 

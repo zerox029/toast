@@ -4,7 +4,6 @@ use bitflags::bitflags;
 use volatile_register::RO;
 use crate::drivers::pci::ahci::AHCIDevice;
 use crate::memory::MemoryManagementUnit;
-use crate::{println, print, serial_println};
 
 const EXT2_SIGNATURE: u16 = 0xEF53;
 const SUPERBLOCK_OFFSET: u16 = 1024;
@@ -273,8 +272,6 @@ impl BlockGroupDescriptor {
 
         let mut entry = MaybeUninit::<BlockGroupDescriptor>::uninit();
         drive.read_from_device(mmu, offset as u64, size_of::<BlockGroupDescriptor>() as u64, entry.as_mut_ptr() as *mut c_void);
-        let entry = unsafe { entry.assume_init() };
-
-        entry
+        unsafe { entry.assume_init() }
     }
 }

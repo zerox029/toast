@@ -5,13 +5,15 @@
 // Command definitions:
 // https://tc.gts3.org/cs3210/2016/spring/r/hardware/ATA8-ACS.pdf
 
+#![allow(clippy::while_immutable_condition)]
+
 use alloc::vec::Vec;
 use core::arch::asm;
 use core::ffi::c_void;
 use core::mem::size_of;
 use core::ops::DerefMut;
 use core::ptr;
-use crate::{println, print, serial_println};
+use crate::{println, print};
 use crate::drivers::pci::{find_all_pci_devices, PCIDevice};
 use crate::memory::{Frame, MemoryManagementUnit};
 use crate::memory::paging::entry::EntryFlags;
@@ -413,7 +415,6 @@ impl AHCIController {
     fn bios_os_handoff(&self) {
         if !is_nth_bit_set(self.hba.cap2 as usize, 0) {
             println!("ahci: bios/os handoff not supported");
-            return;
         }
 
         // TODO
@@ -554,7 +555,7 @@ impl AHCIDevice {
         command_pointer[9] = (sector_offset >> 32) as u8; // LBA4
         command_pointer[10] = (sector_offset >> 40) as u8; // LBA5
 
-        command_pointer[12] = (sector_count >> 0) as u8; // countl
+        command_pointer[12] = sector_count as u8; // countl
         command_pointer[13] = (sector_count >> 8) as u8; // counth
 
         self.init_prdt(command_number);
@@ -596,7 +597,7 @@ impl AHCIDevice {
             command_pointer[9] = (sector_offset >> 32) as u8; // LBA4
             command_pointer[10] = (sector_offset >> 40) as u8; // LBA5
 
-            command_pointer[12] = (sector_count >> 0) as u8; // countl
+            command_pointer[12] = sector_count as u8; // countl
             command_pointer[13] = (sector_count >> 8) as u8; // counth
         }
 
@@ -737,8 +738,8 @@ pub fn init(mmu: &mut MemoryManagementUnit) -> Vec<AHCIDevice> {
     for port in 0..ahci_controller.port_count as usize {
         if is_nth_bit_set(ahci_controller.hba.pi as usize, port) {
             let device = init_port(mmu, &ahci_controller, port, ahci_controller.bar5 as usize + (0x100 + port * 0x80));
-            if device.is_some() {
-                devices.push(device.unwrap());
+            if let Some(ahci_device) = device {
+                devices.push(ahci_device);
             }
         }
     }
@@ -747,7 +748,7 @@ pub fn init(mmu: &mut MemoryManagementUnit) -> Vec<AHCIDevice> {
 }
 
 fn init_port(mmu: &mut MemoryManagementUnit, controller: &AHCIController, port_index: usize, port_address: usize) -> Option<AHCIDevice> {
-    let mut ahci_device = AHCIDevice::new(controller.clone(), port_index, port_address);
+    let mut ahci_device = AHCIDevice::new(controller.clone(), port_index, port_address); // TODO: Allocate on stack instead of cloning
 
     match ahci_device.port_registers.sig {
         SATA_SIG_ATA => println!("ahci: sata drive found on port {}", port_index),
