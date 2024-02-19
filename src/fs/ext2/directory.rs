@@ -1,6 +1,5 @@
 use volatile_register::RO;
-use crate::{print};
-use crate::fs::ext2::directory::FileType::Directory;
+use core::str;
 
 #[repr(C)]
 pub(crate) struct DirectoryEntry {
@@ -18,14 +17,12 @@ pub(crate) struct DirectoryEntry {
     pub(crate) file_type: RO<FileType>,
     /// Name of the entry. The ISO-Latin-1 character set is expected in most system. The name must be no longer
     /// than 255 bytes after encoding.
-    pub(crate) name: RO<[u8; 255]>,
+    name: RO<[u8; 255]>,
 }
 impl DirectoryEntry {
-    pub(crate) fn name(&self) {
-        self.name.read()[0..(self.name_len.read() as usize)].iter().for_each(|&c| print!("{}", c as char));
-        if self.file_type.read() == Directory {
-            print!("/");
-        }
+    /// Returns the name a directory entry with the correct length defined in name_len
+    pub(crate) fn name(&self) -> String {
+        str::from_utf8(&self.name.read()[0..(self.name_len.read() as usize)])
     }
 }
 
