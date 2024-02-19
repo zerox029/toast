@@ -1,4 +1,5 @@
-use volatile_register::RO;
+use alloc::string::String;
+use volatile_register::{RO};
 use core::str;
 
 #[repr(C)]
@@ -22,7 +23,7 @@ pub(crate) struct DirectoryEntry {
 impl DirectoryEntry {
     /// Returns the name a directory entry with the correct length defined in name_len
     pub(crate) fn name(&self) -> String {
-        str::from_utf8(&self.name.read()[0..(self.name_len.read() as usize)])
+        unsafe { String::from(str::from_utf8_unchecked(&self.name.read()[0..(self.name_len.read() as usize)])) }
     }
 }
 

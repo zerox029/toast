@@ -490,7 +490,7 @@ impl AHCIDevice {
 
         let write_buffer_frame = mmu.frame_allocator.allocate_frame().expect("ahci: could not allocate the memory for device write");
         let write_buffer_address = write_buffer_frame.start_address();
-        active_page_table.deref_mut().identity_map(write_buffer_frame, EntryFlags::WRITABLE, allocator);
+        mmu.active_page_table.deref_mut().identity_map(write_buffer_frame, EntryFlags::WRITABLE, &mut mmu.frame_allocator);
 
         if byte_offset % sector_size != 0 {
             self.read_from_device(mmu, byte_offset, sector_size, write_buffer_address as *mut c_void);
@@ -499,13 +499,13 @@ impl AHCIDevice {
             self.read_from_device(mmu, byte_offset + block_count - 1, sector_size, write_buffer_address as *mut c_void);
         }
 
-        unsafe { ptr::copy_nonoverlapping(buffer, (write_buffer_address + (byte_offset % sector_size)) as *mut c_void, byte_count as usize)};
+        unsafe { ptr::copy_nonoverlapping(buffer, (write_buffer_address + (byte_offset % sector_size) as usize) as *mut c_void, byte_count as usize)};
 
-        let written_sectors = self.issue_write(start_block, block_count, write_buffer_address as *mut c_void);
+        self.issue_write(start_block, block_count, write_buffer_address as *mut c_void);
 
         // TODO: Deallocate the frame
 
-        written_sectors - written_sectors.abs_diff(byte_count as usize)
+        //written_sectors - written_sectors.abs_diff(byte_count as usize)
     }
 
     fn issue_identify(&mut self, identity: *mut AHCIIdentifyResponse) {

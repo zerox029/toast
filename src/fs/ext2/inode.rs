@@ -1,3 +1,5 @@
+use alloc::vec;
+use alloc::vec::Vec;
 use core::ffi::c_void;
 use core::mem::{MaybeUninit, size_of};
 use bitflags::bitflags;
@@ -7,10 +9,6 @@ use crate::fs::ext2::block::{BlockGroupDescriptor, Superblock};
 use crate::fs::ext2::directory::{DirectoryEntry};
 use crate::memory::MemoryManagementUnit;
 use crate::{print, println};
-
-pub(crate) struct InodeTable {
-
-}
 
 #[repr(C)]
 pub(crate) struct Inode {
@@ -66,7 +64,7 @@ pub(crate) struct Inode {
 }
 
 bitflags! {
-    #[derive(Copy, Clone)]
+    #[derive(Copy, Clone, Eq, PartialEq)]
     pub(crate) struct InodeMode: u16 {
         // File format
         const SOCKET = 0xC000;
@@ -163,11 +161,68 @@ impl Inode {
         println!("");
     }
 
-    pub(crate) fn get_containing_block_group_id(superblock: &Superblock, inode_id: usize) -> usize {
+    pub(crate) fn find_child_inode(&self, mmu: &mut MemoryManagementUnit, drive: &mut AHCIDevice, superblock: &Superblock, name: &str) -> Option<Inode> {
+        if matches!(self.mode.read(), InodeMode::DIRECTORY) {
+            panic!("ext2: not a directory")
+        }
+
+        let mut inode_data = self.get_inode_data(mmu, drive, superblock);
+
+        let mut read_bytes = 0;
+        while read_bytes < inode_data.len() {
+            let directory_entry_pointer = (inode_data.as_mut_ptr() as usize + read_bytes) as *mut DirectoryEntry;
+            let directory_entry = unsafe { &*directory_entry_pointer };
+
+            if directory_entry.name() == name {
+                return Some(Self::get_from_id(mmu, drive, superblock, directory_entry.inode.read() as usize));
+            }
+
+            read_bytes += directory_entry.rec_len.read() as usize;
+        }
+
+
+        None
+    }
+
+    pub(crate) fn get_inode_data(&self, mmu: &mut MemoryManagementUnit, drive: &mut AHCIDevice, superblock: &Superblock) -> Vec<u8> {
+        let file_start_address = self.block.read()[0] as usize * superblock.block_size_bytes();
+
+        let mut inode_data = vec![0u8; self.size.read() as usize];
+        for block_number in 0..self.adjusted_block_count(superblock) {
+            // First 12 blocks, direct indexing
+            if block_number < 12 {
+                let write_address = (inode_data.as_mut_ptr() as usize + block_number * superblock.block_size_bytes()) as *mut c_void;
+                drive.read_from_device(mmu, file_start_address as u64, size_of::<DirectoryEntry>() as u64, write_address);
+            }
+
+            // 13th block, indirect indexing
+            else if block_number == 12 {
+                unimplemented!();
+            }
+
+            // 14th block, doubly indirect indexing
+            else if block_number == 13 {
+                unimplemented!();
+            }
+
+            // 15h block, triply indirect indexing
+            else if block_number == 14 {
+                unimplemented!();
+            }
+        }
+
+        inode_data
+    }
+
+    fn get_containing_block_group_id(superblock: &Superblock, inode_id: usize) -> usize {
         (inode_id - 1) / superblock.block_group_inode_count.read() as usize
     }
 
-    pub(crate) fn get_local_table_index(superblock: &Superblock, inode_id: usize) -> usize {
+    fn get_local_table_index(superblock: &Superblock, inode_id: usize) -> usize {
         (inode_id - 1) % superblock.block_group_inode_count.read() as usize
+    }
+
+    fn adjusted_block_count(&self, superblock: &Superblock) -> usize {
+        (self.blocks.read() as usize * 512) / superblock.block_size_bytes()
     }
 }

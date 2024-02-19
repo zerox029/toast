@@ -171,6 +171,10 @@ impl Superblock {
             RevisionLevel::Dynamicrevision => self.inode_byte_size.read()
         }
     }
+
+    pub(crate) fn block_size_bytes(&self) -> usize {
+        1024 << self.log_block_size.read()
+    }
 }
 
 #[repr(u16)]
