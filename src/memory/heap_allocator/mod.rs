@@ -1,5 +1,6 @@
 mod bump_allocator;
 mod fixed_size_block_allocator;
+mod buddy_allocator;
 
 use alloc::boxed::Box;
 use alloc::vec::Vec;
