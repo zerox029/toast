@@ -2,7 +2,7 @@ use alloc::vec::Vec;
 use spin::Mutex;
 use crate::arch::x86_64::port_manager::Port;
 use crate::arch::x86_64::port_manager::ReadWriteStatus::ReadWrite;
-use crate::{println, print};
+use crate::{print, info_println};
 use crate::utils::bitutils::is_nth_bit_set;
 
 pub mod ahci;
@@ -128,7 +128,7 @@ pub fn check_all_buses() {
         }
     }
 
-    devices.iter().for_each(|device| println!("Device ID {:X}   Vendor ID: {:X}", device.device_id(0), device.vendor_id(0)));
+    devices.iter().for_each(|device| info_println!("Device ID {:X}   Vendor ID: {:X}", device.device_id(0), device.vendor_id(0)));
 }
 
 fn check_bus(bus: u8) -> Vec<PCIDevice> {

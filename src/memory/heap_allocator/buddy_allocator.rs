@@ -30,7 +30,6 @@ const BLOCK_SIZES: &[usize] = &[8, 16, 32, 64, 128, 256, 512, 1024, 2048, 4096];
 
 struct HeapPage {
     buddy_maps: [BuddyMap; 10],
-    page: Page,
 }
 
 impl HeapPage {
@@ -48,7 +47,6 @@ impl HeapPage {
                 BuddyMap::new(16),
                 BuddyMap::new(8),
             ],
-            page:
         }
     }
 }

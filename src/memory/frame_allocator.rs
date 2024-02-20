@@ -1,10 +1,11 @@
 use crate::arch::multiboot2::structures::{MemoryMapEntry, MemoryMapIter};
-use crate::memory::{Frame, FrameAllocator};
+use crate::memory::{Frame, FrameAllocator, PAGE_SIZE};
 
 pub struct PageFrameAllocator {
     next_free_frame: Frame,
     current_area: Option<&'static MemoryMapEntry>,
     areas: MemoryMapIter,
+
     kernel_start: Frame,
     kernel_end: Frame,
     multiboot_start: Frame,
@@ -68,6 +69,11 @@ impl PageFrameAllocator {
             multiboot_start: Frame::containing_address(multiboot_start),
             multiboot_end: Frame::containing_address(multiboot_end),
         };
+
+        let mut page_count = 0;
+        for area in allocator.areas {
+            page_count += area.size as usize / PAGE_SIZE;
+        }
 
         allocator.choose_next_area();
         allocator

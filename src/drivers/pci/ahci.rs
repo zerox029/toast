@@ -13,7 +13,7 @@ use core::ffi::c_void;
 use core::mem::size_of;
 use core::ops::DerefMut;
 use core::ptr;
-use crate::{println, print};
+use crate::{print, warn_println, info_println, ok_println};
 use crate::drivers::pci::{find_all_pci_devices, PCIDevice};
 use crate::memory::{Frame, MemoryManagementUnit};
 use crate::memory::paging::entry::EntryFlags;
@@ -414,7 +414,7 @@ impl AHCIController {
 
     fn bios_os_handoff(&self) {
         if !is_nth_bit_set(self.hba.cap2 as usize, 0) {
-            println!("ahci: bios/os handoff not supported");
+            warn_println!("ahci: bios/os handoff not supported");
         }
 
         // TODO
@@ -728,12 +728,12 @@ impl AHCICommand {
 }
 
 pub fn init(mmu: &mut MemoryManagementUnit) -> Vec<AHCIDevice> {
-    println!("ahci: init...");
+    info_println!("ahci: init...");
 
     let ahci_pci_device = find_all_pci_devices().into_iter().find(is_ahci_controller).expect("ahci: could not locate the ahci controller");
     let ahci_controller = AHCIController::new(mmu, ahci_pci_device);
 
-    println!("ahci: controller version {}.{}", ahci_controller.version_maj, ahci_controller.version_min);
+    info_println!("ahci: controller version {}.{}", ahci_controller.version_maj, ahci_controller.version_min);
 
     // Enable interrupts, DMA, and memory space access in the PCI command register
     let updated_command = (ahci_pci_device.command(0) | 0x2) & 0b1111101111111111;
@@ -764,10 +764,10 @@ fn init_port(mmu: &mut MemoryManagementUnit, controller: &AHCIController, port_i
     let mut ahci_device = AHCIDevice::new(controller.clone(), port_index, port_address); // TODO: Allocate on stack instead of cloning
 
     match ahci_device.port_registers.sig {
-        SATA_SIG_ATA => println!("ahci: sata drive found on port {}", port_index),
-        SATA_SIG_ATAPI => println!("ahci: satapi drive found on port {}", port_index),
-        SATA_SIG_SEMB => println!("ahci: enclosure management bridge found on port {}", port_index),
-        SATA_SIG_PM => println!("ahci: port multiplier found on port {}", port_index),
+        SATA_SIG_ATA => ok_println!("ahci: sata drive found on port {}", port_index),
+        SATA_SIG_ATAPI => ok_println!("ahci: satapi drive found on port {}", port_index),
+        SATA_SIG_SEMB => ok_println!("ahci: enclosure management bridge found on port {}", port_index),
+        SATA_SIG_PM => ok_println!("ahci: port multiplier found on port {}", port_index),
         _ => return None
     }
 

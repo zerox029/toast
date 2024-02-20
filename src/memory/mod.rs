@@ -1,13 +1,13 @@
 use core::ops::DerefMut;
 use crate::arch::multiboot2::BootInformation;
-use crate::memory::page_frame_allocator::PageFrameAllocator;
+use crate::memory::frame_allocator::PageFrameAllocator;
 use crate::memory::paging::{ActivePageTable, PhysicalAddress};
-use crate::{println, print};
+use crate::{print, info_println};
 
 use self::paging::remap_kernel;
 use self::heap_allocator::{init_heap};
 
-pub mod page_frame_allocator;
+pub mod frame_allocator;
 pub mod paging;
 pub mod heap_allocator;
 
@@ -72,7 +72,7 @@ pub struct MemoryManagementUnit {
 
 impl MemoryManagementUnit {
     pub fn new(boot_information: &BootInformation) -> Self {
-        println!("mm: init...");
+        info_println!("mm: init...");
 
         let memory_map = boot_information.memory_map().expect("Memory map tag required");
         let elf_symbols = boot_information.elf_symbols().expect("Elf symbols tag required");

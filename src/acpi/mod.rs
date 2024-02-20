@@ -6,7 +6,7 @@ use crate::acpi::root_system_descriptor_pointer::{find_rsdp, Rsdp};
 use crate::arch::multiboot2::BootInformation;
 use crate::acpi::acpi_tables::{FixedACPIDescriptionTable, RootSystemDescriptorTable};
 use crate::memory::Frame;
-use crate::memory::page_frame_allocator::PageFrameAllocator;
+use crate::memory::frame_allocator::PageFrameAllocator;
 use crate::memory::paging::ActivePageTable;
 use crate::memory::paging::entry::EntryFlags;
 

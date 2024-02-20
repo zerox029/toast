@@ -50,7 +50,7 @@ pub extern fn _main(multiboot_information_address: usize) {
 fn init(multiboot_information_address: usize) {
     vga_buffer::clear_screen();
 
-    println!("Toast version v0.0.1-x86_64");
+    info_println!("Toast version v0.0.1-x86_64");
     unsafe { CPU_INFO.lock().print_brand(); }
 
     let boot_info = unsafe{ arch::multiboot2::load(multiboot_information_address) };
@@ -109,7 +109,7 @@ fn print_memory_areas(multiboot_information_address: usize) {
 
 #[panic_handler]
 fn panic(info: &PanicInfo) -> ! {
-    println!("{}", info);
+    error_println!("{}", info);
 
     loop {}
 }

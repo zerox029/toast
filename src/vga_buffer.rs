@@ -14,7 +14,13 @@ pub static WRITER: Mutex<Writer> = Mutex::new(Writer {
     buffer: unsafe { Unique::new_unchecked(0xb8000 as *mut _) },
 });
 
-#[allow(dead_code)]
+pub enum MessageType {
+    Info,
+    Warning,
+    Error,
+    Ok,
+}
+
 #[derive(Debug, Clone, Copy)]
 #[repr(u8)]
 pub enum Color {
@@ -156,10 +162,101 @@ macro_rules! println {
     ($fmt:expr, $($arg:tt)*) => (print!(concat!($fmt, "\n"), $($arg)*));
 }
 
+#[macro_export]
+macro_rules! info_println {
+    ($fmt:expr) => ({
+        $crate::vga_buffer::print_header($crate::vga_buffer::MessageType::Info);
+        print!(concat!($fmt, "\n"));
+    });
+    ($fmt:expr, $($arg:tt)*) => ({
+        $crate::vga_buffer::print_header($crate::vga_buffer::MessageType::Info);
+        print!(concat!($fmt, "\n"), $($arg)*);
+    });
+}
+
+#[macro_export]
+macro_rules! warn_println {
+    ($fmt:expr) => ({
+        $crate::vga_buffer::print_header($crate::vga_buffer::MessageType::Warning);
+        print!(concat!($fmt, "\n"));
+    });
+    ($fmt:expr, $($arg:tt)*) => ({
+        $crate::vga_buffer::print_header($crate::vga_buffer::MessageType::Warning);
+        print!(concat!($fmt, "\n"), $($arg)*);
+    });
+}
+
+#[macro_export]
+macro_rules! error_println {
+    ($fmt:expr) => ({
+        $crate::vga_buffer::print_header($crate::vga_buffer::MessageType::Error);
+        print!(concat!($fmt, "\n"));
+    });
+    ($fmt:expr, $($arg:tt)*) => ({
+        $crate::vga_buffer::print_header($crate::vga_buffer::MessageType::Error);
+        print!(concat!($fmt, "\n"), $($arg)*);
+    });
+}
+
+#[macro_export]
+macro_rules! ok_println {
+    ($fmt:expr) => ({
+        $crate::vga_buffer::print_header($crate::vga_buffer::MessageType::Ok);
+        print!(concat!($fmt, "\n"));
+    });
+    ($fmt:expr, $($arg:tt)*) => ({
+        $crate::vga_buffer::print_header($crate::vga_buffer::MessageType::Ok);
+        print!(concat!($fmt, "\n"), $($arg)*);
+    });
+}
+
 pub fn print(args: fmt::Arguments) {
     use core::fmt::Write;
 
     WRITER.lock().write_fmt(args).unwrap();
+}
+
+pub fn print_header(header_type: MessageType) {
+    let mut writer = WRITER.lock();
+
+    match header_type {
+        MessageType::Info => {
+            writer.write_str("[ ");
+
+            writer.color_code = ColorCode::new(Color::DarkGray, Color::Black);
+            writer.write_str("INFO");
+            writer.color_code = DEFAULT_COLOR_CODE;
+
+            writer.write_str(" ] ");
+        }
+        MessageType::Warning => {
+            writer.write_str("[ ");
+
+            writer.color_code = ColorCode::new(Color::Yellow, Color::Black);
+            writer.write_str("WARN");
+            writer.color_code = DEFAULT_COLOR_CODE;
+
+            writer.write_str(" ] ");
+        }
+        MessageType::Error => {
+            writer.write_str("[ ");
+
+            writer.color_code = ColorCode::new(Color::Red, Color::Black);
+            writer.write_str("FAIL");
+            writer.color_code = DEFAULT_COLOR_CODE;
+
+            writer.write_str(" ] ");
+        }
+        MessageType::Ok => {
+            writer.write_str("[ ");
+
+            writer.color_code = ColorCode::new(Color::Green, Color::Black);
+            writer.write_str(" OK ");
+            writer.color_code = DEFAULT_COLOR_CODE;
+
+            writer.write_str(" ] ");
+        }
+    }
 }
 
 pub fn clear_screen() {

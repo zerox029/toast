@@ -1,7 +1,7 @@
 use core::alloc::{GlobalAlloc, Layout};
 use core::{mem, ptr};
 use core::ptr::NonNull;
-use crate::{println, serial_println};
+use crate::{serial_println};
 use super::Locked;
 
 const BLOCK_SIZES: &[usize] = &[8, 16, 32, 64, 128, 256, 512, 1024, 2048];

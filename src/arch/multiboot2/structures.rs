@@ -73,7 +73,7 @@ pub struct MemoryMapEntry {
     pub typ: u32,
     _reserved: u32,
 }
-#[derive(Clone)]
+#[derive(Copy, Clone)]
 pub struct MemoryMapIter {
     pub current_entry: *const MemoryMapEntry,
     pub last_entry: *const MemoryMapEntry,
