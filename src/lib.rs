@@ -65,7 +65,13 @@ fn init(multiboot_information_address: usize) {
     //init_acpi(boot_info, &mut allocator, &mut active_page_table); // TODO: Fix this
 
     let mut ahci_devices = drivers::pci::ahci::init(&mut mmu);
-    mount_filesystem(&mut mmu, &mut ahci_devices[0]);
+    let fs = mount_filesystem(&mut mmu, &mut ahci_devices[0]);
+
+    let file = fs.get_file_contents(&mut mmu, &mut ahci_devices[0], "/files/file.txt").unwrap();
+    let string_content = core::str::from_utf8(file.as_slice()).expect("Failed to read file");
+
+    println!("Reading file /files/file.txt...");
+    println!("{}", string_content);
 
     let ps2_devices = init_ps2_controller();
     let mut executor = Executor::new();

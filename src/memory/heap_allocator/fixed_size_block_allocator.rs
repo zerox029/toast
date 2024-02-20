@@ -1,6 +1,7 @@
 use core::alloc::{GlobalAlloc, Layout};
 use core::{mem, ptr};
 use core::ptr::NonNull;
+use crate::{println, serial_println};
 use super::Locked;
 
 const BLOCK_SIZES: &[usize] = &[8, 16, 32, 64, 128, 256, 512, 1024, 2048];
@@ -12,6 +13,7 @@ struct ListNode {
 pub struct FixedSizeBlockAllocator {
     list_heads: [Option<&'static mut ListNode>; BLOCK_SIZES.len()],
     fallback_allocator: linked_list_allocator::Heap,
+    allocated_bytes: usize,
 }
 
 impl FixedSizeBlockAllocator {
@@ -20,6 +22,7 @@ impl FixedSizeBlockAllocator {
         FixedSizeBlockAllocator {
             list_heads: [EMPTY; BLOCK_SIZES.len()],
             fallback_allocator: linked_list_allocator::Heap::empty(),
+            allocated_bytes: 0,
         }
     }
 
@@ -38,6 +41,10 @@ impl FixedSizeBlockAllocator {
 unsafe impl GlobalAlloc for Locked<FixedSizeBlockAllocator> {
     unsafe fn alloc(&self, layout: Layout) -> *mut u8 {
         let mut allocator = self.lock();
+
+        allocator.allocated_bytes += layout.size();
+        serial_println!("Allocating {} bytes... {} bytes currently allocated", layout.size(), allocator.allocated_bytes);
+
         match list_index(&layout) {
             Some(index) => {
                 match allocator.list_heads[index].take() {
@@ -60,6 +67,10 @@ unsafe impl GlobalAlloc for Locked<FixedSizeBlockAllocator> {
 
     unsafe fn dealloc(&self, ptr: *mut u8, layout: Layout) {
         let mut allocator = self.lock();
+
+        allocator.allocated_bytes -= layout.size();
+        serial_println!("Deallocating {} bytes... {} bytes currently allocated", layout.size(), allocator.allocated_bytes);
+
         match list_index(&layout) {
             Some(index) => {
                 let new_node = ListNode {

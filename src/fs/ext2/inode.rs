@@ -161,12 +161,14 @@ impl Inode {
         println!("");
     }
 
+    /// Looks for an inode with the given name in the current inode's children.
+    /// Returns None if the requested Inode was not present
     pub(crate) fn find_child_inode(&self, mmu: &mut MemoryManagementUnit, drive: &mut AHCIDevice, superblock: &Superblock, name: &str) -> Option<Inode> {
         if matches!(self.mode.read(), InodeMode::DIRECTORY) {
             panic!("ext2: not a directory")
         }
 
-        let mut inode_data = self.get_inode_data(mmu, drive, superblock);
+        let mut inode_data = self.get_content(mmu, drive, superblock);
 
         let mut read_bytes = 0;
         while read_bytes < inode_data.len() {
@@ -184,10 +186,11 @@ impl Inode {
         None
     }
 
-    pub(crate) fn get_inode_data(&self, mmu: &mut MemoryManagementUnit, drive: &mut AHCIDevice, superblock: &Superblock) -> Vec<u8> {
+    pub(crate) fn get_content(&self, mmu: &mut MemoryManagementUnit, drive: &mut AHCIDevice, superblock: &Superblock) -> Vec<u8> {
         let file_start_address = self.block.read()[0] as usize * superblock.block_size_bytes();
 
-        let mut inode_data = vec![0u8; self.size.read() as usize];
+        let mut inode_data = Vec::<u8>::with_capacity(self.size.read() as usize);
+        inode_data = vec![0u8; self.size.read() as usize];
         for block_number in 0..self.adjusted_block_count(superblock) {
             // First 12 blocks, direct indexing
             if block_number < 12 {

@@ -9,6 +9,7 @@ use crate::memory::paging::mapper::Mapper;
 use crate::memory::paging::{Page, VirtualAddress};
 use crate::memory::paging::entry::EntryFlags;
 use crate::{println, print};
+use crate::memory::heap_allocator::bump_allocator::BumpAllocator;
 
 pub const HEAP_START: usize = 0x4444_4444_0000;
 pub const HEAP_SIZE: usize = 100 * 1024; // 100 KiB
