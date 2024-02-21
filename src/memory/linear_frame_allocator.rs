@@ -1,6 +1,27 @@
 use crate::arch::multiboot2::structures::{MemoryMapEntry, MemoryMapIter};
 use crate::memory::{Frame, FrameAllocator, PAGE_SIZE};
 
+/// The amount of simultaneous frames that can be allocated with this allocator. A hard limit is needed because
+/// this allocator is used before the heap is initialized
+const ALLOCATION_LIMIT: usize = 100;
+
+#[derive(Copy, Clone)]
+pub struct FrameStatus {
+    frame_id: Option<usize>,
+    used: bool,
+}
+
+impl FrameStatus {
+    fn default() -> Self {
+        Self {
+            frame_id: None,
+            used: false,
+        }
+    }
+}
+
+/// Allocates frames linearly. This allocator is incredibly inefficient and should only be used before the heap is available
+/// in order to track allocated and free frames.
 pub struct PageFrameAllocator {
     next_free_frame: Frame,
     current_area: Option<&'static MemoryMapEntry>,
@@ -10,10 +31,20 @@ pub struct PageFrameAllocator {
     kernel_end: Frame,
     multiboot_start: Frame,
     multiboot_end: Frame,
+
+    allocated_frames: [FrameStatus; ALLOCATION_LIMIT],
+    allocated_frames_count: usize,
 }
 
 impl FrameAllocator for PageFrameAllocator {
     fn allocate_frame(&mut self) -> Option<Frame> {
+        // Look for a previously allocated frame that has been freed
+        for frame_number in 0..self.allocated_frames_count {
+            if self.allocated_frames[frame_number].used == false {
+                return Some(Frame { number: self.allocated_frames[frame_number].frame_id.unwrap() });
+            }
+        }
+
         if let Some(area) = self.current_area {
             let frame = Frame{ number: self.next_free_frame.number };
 
@@ -41,6 +72,10 @@ impl FrameAllocator for PageFrameAllocator {
             // Return the frame if it is unused
             else {
                 self.next_free_frame.number += 1;
+
+                self.allocated_frames[self.allocated_frames_count] = FrameStatus { frame_id: Some(frame.number), used: true};
+                self.allocated_frames_count += 1;
+
                 return Some(frame)
             }
 
@@ -51,8 +86,12 @@ impl FrameAllocator for PageFrameAllocator {
         }
     }
 
-    fn deallocate_frame(&mut self, _frame: Frame) {
-        unimplemented!();
+    fn deallocate_frame(&mut self, frame: Frame) {
+        for frame_number in 0..self.allocated_frames_count {
+            if self.allocated_frames[frame_number].frame_id.unwrap() == frame.number {
+                self.allocated_frames[frame_number].used = false;
+            }
+        }
     }
 }
 
@@ -68,6 +107,9 @@ impl PageFrameAllocator {
             kernel_end: Frame::containing_address(kernel_end),
             multiboot_start: Frame::containing_address(multiboot_start),
             multiboot_end: Frame::containing_address(multiboot_end),
+
+            allocated_frames: [FrameStatus::default(); ALLOCATION_LIMIT],
+            allocated_frames_count: 0,
         };
 
         let mut page_count = 0;

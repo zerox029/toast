@@ -212,6 +212,7 @@ pub fn remap_kernel<A>(allocator: &mut A, boot_info: &BootInformation) -> Active
 
     let old_p4_page = Page::containing_address(old_table.p4_frame.start_address());
     active_table.unmap(old_p4_page, allocator);
+
     ok_println!("mm: set up guard page at {:#X}", old_p4_page.start_address());
 
     active_table

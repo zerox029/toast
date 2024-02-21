@@ -189,8 +189,7 @@ impl Inode {
     pub(crate) fn get_content(&self, mmu: &mut MemoryManagementUnit, drive: &mut AHCIDevice, superblock: &Superblock) -> Vec<u8> {
         let file_start_address = self.block.read()[0] as usize * superblock.block_size_bytes();
 
-        let mut inode_data = Vec::<u8>::with_capacity(self.size.read() as usize);
-        inode_data = vec![0u8; self.size.read() as usize];
+        let mut inode_data = vec![0u8; self.size.read() as usize];
         for block_number in 0..self.adjusted_block_count(superblock) {
             // First 12 blocks, direct indexing
             if block_number < 12 {

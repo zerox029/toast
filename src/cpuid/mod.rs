@@ -2,7 +2,7 @@ use core::str;
 use core::arch::asm;
 use lazy_static::lazy_static;
 use spin::Mutex;
-use crate::{print, info_println, warn_println};
+use crate::{print, info_println};
 use crate::utils::{any_as_u8_slice};
 use crate::utils::bitutils::is_nth_bit_set;
 

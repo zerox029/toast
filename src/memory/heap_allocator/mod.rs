@@ -9,7 +9,7 @@ use crate::memory::heap_allocator::fixed_size_block_allocator::FixedSizeBlockAll
 use crate::memory::paging::mapper::Mapper;
 use crate::memory::paging::{Page, VirtualAddress};
 use crate::memory::paging::entry::EntryFlags;
-use crate::{print, info_println, ok_println};
+use crate::{print, ok_println};
 
 pub const HEAP_START: usize = 0x4444_4444_0000;
 pub const HEAP_SIZE: usize = 100 * 1024; // 100 KiB

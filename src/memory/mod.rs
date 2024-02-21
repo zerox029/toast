@@ -1,13 +1,13 @@
 use core::ops::DerefMut;
 use crate::arch::multiboot2::BootInformation;
-use crate::memory::frame_allocator::PageFrameAllocator;
+use crate::memory::linear_frame_allocator::PageFrameAllocator;
 use crate::memory::paging::{ActivePageTable, PhysicalAddress};
 use crate::{print, info_println};
 
 use self::paging::remap_kernel;
 use self::heap_allocator::{init_heap};
 
-pub mod frame_allocator;
+pub mod linear_frame_allocator;
 pub mod paging;
 pub mod heap_allocator;
 

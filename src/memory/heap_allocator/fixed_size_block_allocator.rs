@@ -1,7 +1,6 @@
 use core::alloc::{GlobalAlloc, Layout};
 use core::{mem, ptr};
 use core::ptr::NonNull;
-use crate::{serial_println};
 use super::Locked;
 
 const BLOCK_SIZES: &[usize] = &[8, 16, 32, 64, 128, 256, 512, 1024, 2048];
@@ -43,7 +42,7 @@ unsafe impl GlobalAlloc for Locked<FixedSizeBlockAllocator> {
         let mut allocator = self.lock();
 
         allocator.allocated_bytes += layout.size();
-        serial_println!("Allocating {} bytes... {} bytes currently allocated", layout.size(), allocator.allocated_bytes);
+        //serial_println!("Allocating {} bytes... {} bytes currently allocated", layout.size(), allocator.allocated_bytes);
 
         match list_index(&layout) {
             Some(index) => {
@@ -69,7 +68,7 @@ unsafe impl GlobalAlloc for Locked<FixedSizeBlockAllocator> {
         let mut allocator = self.lock();
 
         allocator.allocated_bytes -= layout.size();
-        serial_println!("Deallocating {} bytes... {} bytes currently allocated", layout.size(), allocator.allocated_bytes);
+        //serial_println!("Deallocating {} bytes... {} bytes currently allocated", layout.size(), allocator.allocated_bytes);
 
         match list_index(&layout) {
             Some(index) => {
