@@ -10,6 +10,7 @@ use self::heap_allocator::{init_heap};
 pub mod linear_frame_allocator;
 pub mod paging;
 pub mod heap_allocator;
+mod buddy_allocator;
 
 pub const PAGE_SIZE: usize = 4096;
 
