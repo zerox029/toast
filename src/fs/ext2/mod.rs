@@ -7,7 +7,7 @@ mod directory;
 use alloc::vec::Vec;
 use core::ops::ControlFlow;
 use crate::drivers::pci::ahci::AHCIDevice;
-use crate::{print, info_println};
+use crate::{print, info};
 use crate::fs::ext2::block::{Superblock};
 use crate::fs::ext2::inode::{Inode};
 use crate::memory::MemoryManagementUnit;
@@ -66,7 +66,7 @@ impl Ext2FileSystem {
 }
 
 pub fn mount_filesystem(mmu: &mut MemoryManagementUnit, drive: &mut AHCIDevice) -> Ext2FileSystem {
-    info_println!("ext2: mounting file system...");
+    info!("ext2: mounting file system...");
 
     let superblock = Superblock::read_from_disk(mmu, drive);
     let root_inode = Inode::get_from_id(mmu, drive, &superblock, ROOT_INODE_ID);

@@ -2,7 +2,7 @@ use core::str;
 use core::arch::asm;
 use lazy_static::lazy_static;
 use spin::Mutex;
-use crate::{print, info_println};
+use crate::{print, info};
 use crate::utils::{any_as_u8_slice};
 use crate::utils::bitutils::is_nth_bit_set;
 
@@ -43,7 +43,7 @@ pub struct CPUInfo {
 
 impl CPUInfo {
     pub fn get_current_cpu_info() -> CPUInfo {
-        info_println!("cpu: getting cpu info...");
+        info!("cpu: getting cpu info...");
 
         unsafe {
             Self {
@@ -120,6 +120,6 @@ impl CPUInfo {
         let brand_response = BrandStringResponse { eax, ebx, ecx, edx, eax2, ebx2, ecx2, edx2, eax3, ebx3, ecx3, edx3, };
         let brand_string= str::from_utf8(any_as_u8_slice(&brand_response)).unwrap();
 
-        info_println!("cpu: {}", brand_string);
+        info!("cpu: {}", brand_string);
     }
 }

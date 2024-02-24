@@ -5,7 +5,7 @@ use core::fmt;
 use core::fmt::{Formatter, Debug};
 use downcast_rs::{Downcast, impl_downcast};
 use spin::Mutex;
-use crate::{print, info_println, warn_println, ok_println};
+use crate::{print, info, warn, ok};
 use crate::arch::x86_64::port_manager::Port;
 use crate::arch::x86_64::port_manager::ReadWriteStatus::*;
 use crate::drivers::ps2::keyboard::PS2Keyboard;
@@ -147,10 +147,10 @@ impl PS2Device for GenericPS2Device {
 pub type PS2DeviceOption = Option<Box<dyn PS2Device>>;
 
 pub fn init_ps2_controller() -> (PS2DeviceOption, PS2DeviceOption) {
-    info_println!("ps2: attempting to initialize ps/2 driver...");
+    info!("ps2: attempting to initialize ps/2 driver...");
 
     if !check_ps2_controller_exists() {
-        warn_println!("could not find PS/2 controller...");
+        warn!("could not find PS/2 controller...");
         return (None, None);
     }
 
@@ -163,11 +163,11 @@ pub fn init_ps2_controller() -> (PS2DeviceOption, PS2DeviceOption) {
     enable_devices(&devices);
     reset_devices(&devices);
 
-    ok_println!("ps2: successfully initialized ps/2 driver!");
+    ok!("ps2: successfully initialized ps/2 driver!");
 
     let first_port_device = detect_device(&devices.0.unwrap());
 
-    ok_println!("ps2: detected {}", first_port_device.as_ref().unwrap().device_type());
+    ok!("ps2: detected {}", first_port_device.as_ref().unwrap().device_type());
 
     (first_port_device, None)
 }

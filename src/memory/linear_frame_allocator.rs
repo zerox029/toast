@@ -1,5 +1,5 @@
 use crate::arch::multiboot2::structures::{MemoryMapEntry, MemoryMapIter};
-use crate::memory::{Frame, FrameAllocator, PAGE_SIZE};
+use crate::memory::{Frame, FrameAllocator};
 
 /// The amount of simultaneous frames that can be allocated with this allocator. A hard limit is needed because
 /// this allocator is used before the heap is initialized
@@ -111,11 +111,6 @@ impl PageFrameAllocator {
             allocated_frames: [FrameStatus::default(); ALLOCATION_LIMIT],
             allocated_frames_count: 0,
         };
-
-        let mut page_count = 0;
-        for area in allocator.areas {
-            page_count += area.size as usize / PAGE_SIZE;
-        }
 
         allocator.choose_next_area();
         allocator

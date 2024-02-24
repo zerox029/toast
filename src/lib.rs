@@ -20,15 +20,8 @@ use core::panic::PanicInfo;
 use x86_64::registers::model_specific::Efer;
 use x86_64::registers::control::{Cr0, Cr0Flags, EferFlags};
 use crate::cpuid::CPU_INFO;
-use crate::interrupts::{INTERRUPT_CONTROLLER, InterruptController};
-use crate::drivers::ps2::{init_ps2_controller};
-use crate::drivers::ps2::keyboard::PS2Keyboard;
-use crate::drivers::ps2::PS2DeviceType::*;
-use crate::fs::ext2::mount_filesystem;
+use crate::interrupts::{InterruptController};
 use crate::memory::MemoryManagementUnit;
-use crate::task::executor::{Executor};
-use crate::task::keyboard::print_key_inputs;
-use crate::task::Task;
 
 mod vga_buffer;
 mod arch;
@@ -50,7 +43,7 @@ pub extern fn _main(multiboot_information_address: usize) {
 fn init(multiboot_information_address: usize) {
     vga_buffer::clear_screen();
 
-    info_println!("Toast version v0.0.1-x86_64");
+    info!("Toast version v0.0.1-x86_64");
     unsafe { CPU_INFO.lock().print_brand(); }
 
     let boot_info = unsafe{ arch::multiboot2::load(multiboot_information_address) };
@@ -61,9 +54,11 @@ fn init(multiboot_information_address: usize) {
     }
 
     let mut mmu = MemoryManagementUnit::new(boot_info);
+
     InterruptController::init_interrupts();
     //init_acpi(boot_info, &mut allocator, &mut active_page_table); // TODO: Fix this
 
+/*
     let mut ahci_devices = drivers::pci::ahci::init(&mut mmu);
     let fs = mount_filesystem(&mut mmu, &mut ahci_devices[0]);
 
@@ -86,7 +81,7 @@ fn init(multiboot_information_address: usize) {
 
     print!(">");
 
-    executor.run();
+    executor.run();*/
 }
 
 fn print_memory_areas(multiboot_information_address: usize) {
@@ -109,7 +104,7 @@ fn print_memory_areas(multiboot_information_address: usize) {
 
 #[panic_handler]
 fn panic(info: &PanicInfo) -> ! {
-    error_println!("{}", info);
+    error!("{}", info);
 
     loop {}
 }

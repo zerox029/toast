@@ -17,7 +17,7 @@ unsafe impl GlobalAlloc for BuddyAllocator {
         todo!()
     }
 
-    unsafe fn dealloc(&self, ptr: *mut u8, layout: Layout) {
+    unsafe fn dealloc(&self, _ptr: *mut u8, layout: Layout) {
         if layout.size() > 4096 {
             panic!("mm: allocator only support deallocations under 4KiB");
         }

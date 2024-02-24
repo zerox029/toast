@@ -5,7 +5,7 @@ use crate::memory::{Frame, FrameAllocator, PAGE_SIZE};
 use crate::memory::paging::entry::EntryFlags;
 use crate::memory::paging::temporary_page::TemporaryPage;
 use crate::memory::paging::mapper::Mapper;
-use crate::{print, info_println, ok_println};
+use crate::{print, info, ok};
 
 pub mod entry;
 pub mod table;
@@ -169,7 +169,7 @@ impl InactivePageTable {
 }
 
 pub fn remap_kernel<A>(allocator: &mut A, boot_info: &BootInformation) -> ActivePageTable where A: FrameAllocator {
-    info_println!("mm: identity mapping kernel...");
+    info!("mm: identity mapping kernel...");
     let mut temporary_page = TemporaryPage::new(Page { number: 0xcafebabe }, allocator);
 
     let mut active_table = unsafe { ActivePageTable::new() };
@@ -213,7 +213,7 @@ pub fn remap_kernel<A>(allocator: &mut A, boot_info: &BootInformation) -> Active
     let old_p4_page = Page::containing_address(old_table.p4_frame.start_address());
     active_table.unmap(old_p4_page, allocator);
 
-    ok_println!("mm: set up guard page at {:#X}", old_p4_page.start_address());
+    ok!("mm: set up guard page at {:#X}", old_p4_page.start_address());
 
     active_table
 }

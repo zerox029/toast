@@ -2,7 +2,8 @@ use core::ops::DerefMut;
 use crate::arch::multiboot2::BootInformation;
 use crate::memory::linear_frame_allocator::PageFrameAllocator;
 use crate::memory::paging::{ActivePageTable, PhysicalAddress};
-use crate::{print, info_println};
+use crate::{print, info, serial_println};
+use crate::memory::buddy_allocator::BuddyAllocator;
 
 use self::paging::remap_kernel;
 use self::heap_allocator::{init_heap};
@@ -10,7 +11,7 @@ use self::heap_allocator::{init_heap};
 pub mod linear_frame_allocator;
 pub mod paging;
 pub mod heap_allocator;
-mod buddy_allocator;
+pub mod buddy_allocator;
 
 pub const PAGE_SIZE: usize = 4096;
 
@@ -73,13 +74,13 @@ pub struct MemoryManagementUnit {
 
 impl MemoryManagementUnit {
     pub fn new(boot_information: &BootInformation) -> Self {
-        info_println!("mm: init...");
+        info!("mm: init...");
 
         let memory_map = boot_information.memory_map().expect("Memory map tag required");
         let elf_symbols = boot_information.elf_symbols().expect("Elf symbols tag required");
 
         let kernel_start = elf_symbols.section_headers().map(|s| s.start_address()).min().unwrap();
-        let kernel_end = elf_symbols.section_headers().map(|s| s.end_address()).min().unwrap();
+        let kernel_end = elf_symbols.section_headers().map(|s| s.end_address()).max().unwrap();
 
         let multiboot_start = boot_information.start_address();
         let multiboot_end = multiboot_start + (boot_information.total_size as usize);
@@ -90,6 +91,17 @@ impl MemoryManagementUnit {
 
         let mut active_page_table = remap_kernel(&mut frame_allocator, boot_information);
         init_heap(active_page_table.deref_mut(), &mut frame_allocator);
+
+
+
+        let mut buddy_allocator = BuddyAllocator::new(kernel_start, kernel_end,
+                                                  multiboot_start, multiboot_end,
+                                                  memory_map.entries());
+
+        let allocation = buddy_allocator.allocate_frame();
+        serial_println!("Allocated at {}", allocation.unwrap().start_address());
+        let allocation2 = buddy_allocator.allocate_frame();
+        serial_println!("Allocated at {}", allocation2.unwrap().start_address());
 
         Self {
             frame_allocator,
