@@ -6,11 +6,11 @@ use crate::acpi::root_system_descriptor_pointer::{find_rsdp, Rsdp};
 use crate::arch::multiboot2::BootInformation;
 use crate::acpi::acpi_tables::{FixedACPIDescriptionTable, RootSystemDescriptorTable};
 use crate::memory::Frame;
-use crate::memory::linear_frame_allocator::PageFrameAllocator;
+use crate::memory::linear_frame_allocator::LinearFrameAllocator;
 use crate::memory::paging::ActivePageTable;
 use crate::memory::paging::entry::EntryFlags;
 
-pub fn init_acpi(boot_info: &BootInformation, allocator: &mut PageFrameAllocator, page_table: &mut ActivePageTable) {
+pub fn init_acpi(boot_info: &BootInformation, allocator: &mut LinearFrameAllocator, page_table: &mut ActivePageTable) {
     let rsdp = find_rsdp(boot_info).expect("Error finding RSDP");
 
     let rsdt_address = match rsdp {

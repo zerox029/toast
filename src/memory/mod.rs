@@ -1,6 +1,8 @@
+use alloc::vec;
+use alloc::vec::Vec;
 use core::ops::DerefMut;
 use crate::arch::multiboot2::BootInformation;
-use crate::memory::linear_frame_allocator::PageFrameAllocator;
+use crate::memory::linear_frame_allocator::LinearFrameAllocator;
 use crate::memory::paging::{ActivePageTable, PhysicalAddress};
 use crate::{print, info, serial_println};
 use crate::memory::buddy_allocator::BuddyAllocator;
@@ -68,7 +70,7 @@ pub trait FrameAllocator {
 }
 
 pub struct MemoryManagementUnit {
-    pub frame_allocator: PageFrameAllocator,
+    pub frame_allocator: BuddyAllocator,
     pub active_page_table: ActivePageTable,
 }
 
@@ -85,26 +87,21 @@ impl MemoryManagementUnit {
         let multiboot_start = boot_information.start_address();
         let multiboot_end = multiboot_start + (boot_information.total_size as usize);
 
-        let mut frame_allocator = PageFrameAllocator::new(kernel_start, kernel_end,
-                                                          multiboot_start, multiboot_end,
-                                                          memory_map.entries());
+        let mut frame_allocator = LinearFrameAllocator::new(kernel_start, kernel_end,
+                                                            multiboot_start, multiboot_end,
+                                                            memory_map.entries());
 
         let mut active_page_table = remap_kernel(&mut frame_allocator, boot_information);
         init_heap(active_page_table.deref_mut(), &mut frame_allocator);
 
-
-
+        // Switch to the buddy allocator
         let mut buddy_allocator = BuddyAllocator::new(kernel_start, kernel_end,
                                                   multiboot_start, multiboot_end,
                                                   memory_map.entries());
-
-        let allocation = buddy_allocator.allocate_frame();
-        serial_println!("Allocated at {}", allocation.unwrap().start_address());
-        let allocation2 = buddy_allocator.allocate_frame();
-        serial_println!("Allocated at {}", allocation2.unwrap().start_address());
+        buddy_allocator.set_allocated_frames(frame_allocator.allocated_frames());
 
         Self {
-            frame_allocator,
+            frame_allocator: buddy_allocator,
             active_page_table,
         }
     }

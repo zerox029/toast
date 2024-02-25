@@ -1,3 +1,5 @@
+use alloc::vec::Vec;
+use futures_util::FutureExt;
 use crate::arch::multiboot2::structures::{MemoryMapEntry, MemoryMapIter};
 use crate::memory::{Frame, FrameAllocator};
 
@@ -22,7 +24,7 @@ impl FrameStatus {
 
 /// Allocates frames linearly. This allocator is incredibly inefficient and should only be used before the heap is available
 /// in order to track allocated and free frames.
-pub struct PageFrameAllocator {
+pub struct LinearFrameAllocator {
     next_free_frame: Frame,
     current_area: Option<&'static MemoryMapEntry>,
     areas: MemoryMapIter,
@@ -36,7 +38,7 @@ pub struct PageFrameAllocator {
     allocated_frames_count: usize,
 }
 
-impl FrameAllocator for PageFrameAllocator {
+impl FrameAllocator for LinearFrameAllocator {
     fn allocate_frame(&mut self) -> Option<Frame> {
         // Look for a previously allocated frame that has been freed
         for frame_number in 0..self.allocated_frames_count {
@@ -95,11 +97,11 @@ impl FrameAllocator for PageFrameAllocator {
     }
 }
 
-impl PageFrameAllocator {
+impl LinearFrameAllocator {
     pub fn new(kernel_start: usize, kernel_end: usize,
                multiboot_start: usize, multiboot_end: usize,
-               memory_map: MemoryMapIter) -> PageFrameAllocator {
-        let mut allocator = PageFrameAllocator {
+               memory_map: MemoryMapIter) -> LinearFrameAllocator {
+        let mut allocator = LinearFrameAllocator {
             next_free_frame: Frame::containing_address(0),
             current_area: None,
             areas: memory_map,
@@ -129,5 +131,13 @@ impl PageFrameAllocator {
                 self.next_free_frame = start_frame;
             }
         }
+    }
+
+    pub fn allocated_frames(&self) -> Vec<usize> {
+        self.allocated_frames
+            .iter()
+            .filter(|frame| frame.used && frame.frame_id.is_some())
+            .map(|frame| frame.frame_id.unwrap())
+            .collect()
     }
 }
