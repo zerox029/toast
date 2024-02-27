@@ -1,29 +1,31 @@
 use alloc::collections::LinkedList;
 use alloc::vec::Vec;
+use core::cmp::min;
 use crate::arch::multiboot2::structures::{MemoryMapEntry, MemoryMapIter};
 use crate::memory::{Frame, FrameAllocator, PAGE_SIZE};
-use crate::serial_println;
+use crate::{panic, serial_println};
+use crate::memory::buddy_allocator::BlockType::{LeftBuddy, RightBuddy, TopLevel};
 
 const MAX_ORDER: usize = 10;
+
+#[derive(Debug, Copy, Clone, Eq, PartialEq)]
+enum BlockType {
+    TopLevel,
+    LeftBuddy,
+    RightBuddy
+}
 
 type MemoryBlocks = [LinkedList<MemoryBlock>; MAX_ORDER + 1];
 pub struct BuddyAllocator {
     memory_blocks: MemoryBlocks,
-
-    kernel_start: usize,
-    kernel_end: usize,
-    multiboot_start: usize,
-    multiboot_end: usize,
-
-    current_area: Option<&'static MemoryMapEntry>,
-    areas: MemoryMapIter,
 }
 
-#[derive(Copy, Clone)]
+#[derive(Debug, Copy, Clone)]
 struct MemoryBlock {
     is_allocated: bool,
     starting_address: usize,
-    size_class: usize
+    size_class: usize,
+    block_type: BlockType
 }
 
 impl MemoryBlock {
@@ -50,77 +52,13 @@ impl BuddyAllocator {
             LinkedList::new(),
         ];
 
-        // Fill the memory map
+        // Fill the memory block lists
         for area in memory_map {
-            Self::split_area(area, &mut memory_blocks, kernel_start, kernel_end, multiboot_start, multiboot_end);
+            Self::map_area(area, &mut memory_blocks, kernel_start, kernel_end, multiboot_start, multiboot_end);
         }
 
         Self {
             memory_blocks,
-            kernel_start,
-            kernel_end,
-            multiboot_start,
-            multiboot_end,
-            current_area: None,
-            areas: memory_map
-        }
-    }
-
-    fn split_area(area: &MemoryMapEntry, memory_blocks: &mut MemoryBlocks,
-                  kernel_start: usize, kernel_end: usize, multiboot_start: usize, multiboot_end: usize,) {
-        let mut start_address = area.base_addr;
-        let mut end_address = start_address as usize + PAGE_SIZE * 2usize.pow(MAX_ORDER as u32);
-
-        while start_address < area.base_addr + area.size {
-            let mut current_order = MAX_ORDER as u32;
-
-            // If block starts in restricted area, move to the end of that area
-            if start_address as usize >= kernel_start && start_address as usize <= kernel_end {
-                // Offset so that allocation is page aligned
-                let offset = PAGE_SIZE - kernel_end % PAGE_SIZE;
-
-                serial_println!("{:X} is in kernel, adding offset {:X} to {:X}", start_address, offset, kernel_end);
-
-                start_address = (kernel_end + offset) as u64;
-                end_address = start_address as usize + PAGE_SIZE * 2usize.pow(MAX_ORDER as u32);
-
-                continue;
-            }
-            else if start_address as usize >= multiboot_start && start_address as usize <= multiboot_end {
-                // Offset so that allocation is page aligned
-                let offset = PAGE_SIZE - multiboot_end % PAGE_SIZE;
-
-                start_address = (multiboot_end + offset) as u64;
-                end_address = start_address as usize + PAGE_SIZE * 2usize.pow(MAX_ORDER as u32);
-
-                continue;
-            }
-
-
-            // Find the largest block that fits
-            while end_address > (area.base_addr + area.size) as usize
-            || Self::block_is_in_forbidden_area(start_address as usize, end_address, kernel_start, kernel_end, multiboot_start, multiboot_end) {
-                // If block starts in kernel area, move to the end of that area
-
-                // If no block order fits, no more blocks can be added for this area
-                if current_order == 0 {
-                    return;
-                }
-
-                current_order -= 1;
-                end_address = start_address as usize + PAGE_SIZE * 2usize.pow(current_order);
-            }
-
-            // Add the block to its corresponding list
-            memory_blocks[current_order as usize].push_back(MemoryBlock {
-                is_allocated: false,
-                starting_address: start_address as usize,
-                size_class: current_order as usize,
-            });
-
-            // Move on to the next block
-            start_address += (PAGE_SIZE * 2usize.pow(current_order)) as u64;
-            end_address = start_address as usize + PAGE_SIZE * 2usize.pow(MAX_ORDER as u32);
         }
     }
 
@@ -145,7 +83,64 @@ impl BuddyAllocator {
 
             Some(block.starting_address)
         } else {
-            self.split_any_block(order + 1)
+            self.split_block(order + 1)
+        }
+    }
+
+    /// Deallocates 2^order contiguous frames
+    pub fn deallocate_frames(&mut self, start_address: usize, order: usize) {
+        let memory_block = self.memory_blocks[order].iter_mut()
+            .find(|block| block.starting_address == start_address);
+
+        if memory_block.is_none() {
+            panic!("could not find the frame to deallocate");
+        }
+
+        if let Some(memory_block) = memory_block {
+            if !memory_block.is_allocated {
+                panic!("frame was already unallocated");
+            }
+
+            memory_block.is_allocated = false;
+
+            // Merge only if block is a buddy
+            if memory_block.block_type == TopLevel {
+                serial_println!("deallocating a top level");
+                return;
+            }
+
+            let buddy_address = if memory_block.block_type == LeftBuddy {
+                memory_block.starting_address + PAGE_SIZE * 2usize.pow(memory_block.size_class as u32)
+            } else {
+                memory_block.starting_address - PAGE_SIZE * 2usize.pow(memory_block.size_class as u32)
+            };
+
+            let buddy = self.memory_blocks[order].iter_mut()
+                .find(|block| block.starting_address == buddy_address);
+
+            if buddy.is_none() {
+                panic!("could not find the frame to deallocate");
+            }
+
+            // Merge the two blocks
+            if let Some(buddy) = buddy {
+                if !buddy.is_allocated {
+                    let parent_block_address = min(start_address, buddy_address);
+
+                    let extracted_buddy =
+                        self.memory_blocks[order].extract_if(|block| block.starting_address == start_address);
+                    let extracted_buddy =
+                        self.memory_blocks[order].extract_if(|block| block.starting_address == buddy_address);
+
+                    serial_println!("merged");
+
+                    self.memory_blocks[order + 1]
+                        .iter_mut()
+                        .find(|block| block.starting_address == parent_block_address)
+                        .expect("could not find a parent block")
+                        .is_allocated = false;
+                }
+            }
         }
     }
 
@@ -176,13 +171,18 @@ impl BuddyAllocator {
                 is_allocated: false,
                 starting_address: current_block_clone.starting_address,
                 size_class: buddy_size_class,
+                block_type: LeftBuddy
             };
 
             let mut right_buddy = MemoryBlock {
                 is_allocated: false,
                 starting_address: current_block_clone.starting_address + PAGE_SIZE * 2usize.pow(buddy_size_class as u32),
                 size_class: buddy_size_class,
+                block_type: RightBuddy,
             };
+
+            serial_println!("created a size {} block at {:X} by splitting", buddy_size_class, current_block_clone.starting_address);
+            serial_println!("created a size {} block at {:X} by splitting", buddy_size_class, current_block_clone.starting_address + PAGE_SIZE * 2usize.pow(buddy_size_class as u32));
 
             if left_buddy.contains_address(address) {
                 left_buddy.is_allocated = true;
@@ -203,9 +203,64 @@ impl BuddyAllocator {
         Some(current_block_clone.starting_address)
     }
 
-    /// Split a 2^n sized block into two 2^n-1 sized blocks, and sets the first one as allocated and returns it.
-    /// The created blocks are added to the free_areas array at index n-1 and the original block is marked as allocated.
-    fn split_any_block(&mut self, order: usize) -> Option<usize> {
+    fn map_area(area: &MemoryMapEntry, memory_blocks: &mut MemoryBlocks,
+                kernel_start: usize, kernel_end: usize, multiboot_start: usize, multiboot_end: usize,) {
+        let mut start_address = area.base_addr;
+        let mut end_address = start_address as usize + PAGE_SIZE * 2usize.pow(MAX_ORDER as u32);
+
+        while start_address < area.base_addr + area.size {
+            let mut current_order = MAX_ORDER as u32;
+
+            // If block starts in restricted area, move to the end of that area
+            if start_address as usize >= kernel_start && start_address as usize <= kernel_end {
+                // Offset so that allocation is page aligned
+                let offset = PAGE_SIZE - kernel_end % PAGE_SIZE;
+
+                start_address = (kernel_end + offset) as u64;
+                end_address = start_address as usize + PAGE_SIZE * 2usize.pow(MAX_ORDER as u32);
+
+                continue;
+            }
+            else if start_address as usize >= multiboot_start && start_address as usize <= multiboot_end {
+                // Offset so that allocation is page aligned
+                let offset = PAGE_SIZE - multiboot_end % PAGE_SIZE;
+
+                start_address = (multiboot_end + offset) as u64;
+                end_address = start_address as usize + PAGE_SIZE * 2usize.pow(MAX_ORDER as u32);
+
+                continue;
+            }
+
+
+            // Find the largest block that fits
+            while end_address > (area.base_addr + area.size) as usize
+                || Self::block_is_in_forbidden_area(start_address as usize, end_address, kernel_start, kernel_end, multiboot_start, multiboot_end) {
+                // If no block order fits, no more blocks can be added for this area
+                if current_order == 0 {
+                    return;
+                }
+
+                current_order -= 1;
+                end_address = start_address as usize + PAGE_SIZE * 2usize.pow(current_order);
+            }
+
+            // Add the block to its corresponding list
+            memory_blocks[current_order as usize].push_back(MemoryBlock {
+                is_allocated: false,
+                starting_address: start_address as usize,
+                size_class: current_order as usize,
+                block_type: TopLevel
+            });
+
+            // Move on to the next block
+            start_address += (PAGE_SIZE * 2usize.pow(current_order)) as u64;
+            end_address = start_address as usize + PAGE_SIZE * 2usize.pow(MAX_ORDER as u32);
+        }
+    }
+
+    /// Split a 2^order sized block into two 2^order-1 sized blocks, and sets the first one as allocated and returns it.
+    /// The created blocks are added to the free_areas array at index order-1 and the original block is marked as allocated.
+    fn split_block(&mut self, order: usize) -> Option<usize> {
         if order == 0 {
             panic!("cannot split block further");
         }
@@ -224,23 +279,27 @@ impl BuddyAllocator {
         let mut current_block_clone = current_block.clone();
 
         // Repeatedly split until we get to the desired size
-        while current_block_clone.size_class > order {
+        while current_block_clone.size_class >= order {
             let buddy_size_class = current_block_clone.size_class - 1;
 
             let left_buddy = MemoryBlock {
                 is_allocated: true,
                 starting_address: current_block_clone.starting_address,
                 size_class: buddy_size_class,
+                block_type: LeftBuddy
             };
 
             let right_buddy = MemoryBlock {
                 is_allocated: false,
                 starting_address: current_block_clone.starting_address + PAGE_SIZE * 2usize.pow(buddy_size_class as u32),
                 size_class: buddy_size_class,
+                block_type: RightBuddy
             };
 
             // Add the two buddies to the linked list
+            serial_println!("added a size {} at {}", buddy_size_class, current_block_clone.starting_address);
             self.memory_blocks[buddy_size_class].push_back(left_buddy);
+            serial_println!("added a size {} at {}", buddy_size_class, current_block_clone.starting_address + PAGE_SIZE * 2usize.pow(buddy_size_class as u32));
             self.memory_blocks[buddy_size_class].push_back(right_buddy);
 
             // Return only the (allocated) left buddy
@@ -248,10 +307,6 @@ impl BuddyAllocator {
         }
 
         Some(current_block_clone.starting_address)
-    }
-
-    fn merge_blocks() {
-        todo!();
     }
 
     fn block_is_in_forbidden_area(start: usize, end: usize, kernel_start: usize, kernel_end: usize, multiboot_start: usize, multiboot_end: usize) -> bool {
@@ -276,7 +331,7 @@ impl FrameAllocator for BuddyAllocator {
         Some(frame)
     }
 
-    fn deallocate_frame(&mut self, _frame: Frame) {
-        todo!()
+    fn deallocate_frame(&mut self, frame: Frame) {
+        self.deallocate_frames(frame.start_address(), 0);
     }
 }

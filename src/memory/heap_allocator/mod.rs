@@ -1,20 +1,20 @@
 mod bump_allocator;
-mod fixed_size_block_allocator;
+mod slab_allocator;
 
 use alloc::boxed::Box;
 use alloc::vec::Vec;
 use crate::memory::{FrameAllocator};
-use crate::memory::heap_allocator::fixed_size_block_allocator::FixedSizeBlockAllocator;
+use crate::memory::heap_allocator::slab_allocator::SlabAllocator;
 use crate::memory::paging::mapper::Mapper;
 use crate::memory::paging::{Page, VirtualAddress};
 use crate::memory::paging::entry::EntryFlags;
 use crate::{print, ok};
 
 pub const HEAP_START: usize = 0x4444_4444_0000;
-pub const HEAP_SIZE: usize = 100 * 1024; // 100 KiB
+pub const HEAP_SIZE: usize = 150 * 1024; // 100 KiB
 
 #[global_allocator]
-static ALLOCATOR: Locked<FixedSizeBlockAllocator> = Locked::new(FixedSizeBlockAllocator::new());
+static ALLOCATOR: Locked<SlabAllocator> = Locked::new(SlabAllocator::new());
 
 pub struct Locked<A> {
     inner: spin::Mutex<A>,

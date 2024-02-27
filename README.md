@@ -1,4 +1,3 @@
-
 # Toast
 A small hobby operating system written in Rust
 
@@ -7,6 +6,7 @@ A small hobby operating system written in Rust
 - Async/Await
 - Keyboard
 - Disk I/O
+- ext2 file system 
 
 ## Dependencies
 - GRUB

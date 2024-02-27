@@ -96,6 +96,8 @@ impl MemoryManagementUnit {
         let mut buddy_allocator = BuddyAllocator::new(kernel_start, kernel_end,
                                                   multiboot_start, multiboot_end,
                                                   memory_map.entries());
+
+
         buddy_allocator.set_allocated_frames(linear_allocator.allocated_frames());
 
         Self {

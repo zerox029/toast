@@ -11,6 +11,7 @@
 #![feature(never_type)]
 #![feature(new_uninit)]
 #![feature(str_from_raw_parts)]
+#![feature(extract_if)]
 
 extern crate downcast_rs;
 extern crate alloc;

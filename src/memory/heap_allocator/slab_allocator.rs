@@ -9,16 +9,16 @@ struct ListNode {
     next: Option<&'static mut ListNode>
 }
 
-pub struct FixedSizeBlockAllocator {
+pub struct SlabAllocator {
     list_heads: [Option<&'static mut ListNode>; BLOCK_SIZES.len()],
     fallback_allocator: linked_list_allocator::Heap,
     allocated_bytes: usize,
 }
 
-impl FixedSizeBlockAllocator {
+impl SlabAllocator {
     pub const fn new() -> Self {
         const EMPTY: Option<&'static mut ListNode> = None;
-        FixedSizeBlockAllocator {
+        SlabAllocator {
             list_heads: [EMPTY; BLOCK_SIZES.len()],
             fallback_allocator: linked_list_allocator::Heap::empty(),
             allocated_bytes: 0,
@@ -37,7 +37,7 @@ impl FixedSizeBlockAllocator {
     }
 }
 
-unsafe impl GlobalAlloc for Locked<FixedSizeBlockAllocator> {
+unsafe impl GlobalAlloc for Locked<SlabAllocator> {
     unsafe fn alloc(&self, layout: Layout) -> *mut u8 {
         let mut allocator = self.lock();
 
