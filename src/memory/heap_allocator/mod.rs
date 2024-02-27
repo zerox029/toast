@@ -11,7 +11,7 @@ use crate::memory::paging::entry::EntryFlags;
 use crate::{print, ok};
 
 pub const HEAP_START: usize = 0x4444_4444_0000;
-pub const HEAP_SIZE: usize = 150 * 1024; // 100 KiB
+pub const HEAP_SIZE: usize = 100 * 1024; // 100 KiB
 
 #[global_allocator]
 static ALLOCATOR: Locked<SlabAllocator> = Locked::new(SlabAllocator::new());

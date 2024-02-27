@@ -3,7 +3,7 @@ use alloc::vec::Vec;
 use core::cmp::min;
 use crate::arch::multiboot2::structures::{MemoryMapEntry, MemoryMapIter};
 use crate::memory::{Frame, FrameAllocator, PAGE_SIZE};
-use crate::{panic, serial_println};
+use crate::{serial_println};
 use crate::memory::buddy_allocator::BlockType::{LeftBuddy, RightBuddy, TopLevel};
 
 const MAX_ORDER: usize = 10;
@@ -127,10 +127,10 @@ impl BuddyAllocator {
                 if !buddy.is_allocated {
                     let parent_block_address = min(start_address, buddy_address);
 
-                    let extracted_buddy =
-                        self.memory_blocks[order].extract_if(|block| block.starting_address == start_address);
-                    let extracted_buddy =
-                        self.memory_blocks[order].extract_if(|block| block.starting_address == buddy_address);
+                    let _extracted_buddy = self.memory_blocks[order]
+                        .extract_if(|block| block.starting_address == start_address);
+                    let _extracted_buddy = self.memory_blocks[order]
+                        .extract_if(|block| block.starting_address == buddy_address);
 
                     serial_println!("merged");
 
@@ -180,9 +180,6 @@ impl BuddyAllocator {
                 size_class: buddy_size_class,
                 block_type: RightBuddy,
             };
-
-            serial_println!("created a size {} block at {:X} by splitting", buddy_size_class, current_block_clone.starting_address);
-            serial_println!("created a size {} block at {:X} by splitting", buddy_size_class, current_block_clone.starting_address + PAGE_SIZE * 2usize.pow(buddy_size_class as u32));
 
             if left_buddy.contains_address(address) {
                 left_buddy.is_allocated = true;
@@ -297,9 +294,7 @@ impl BuddyAllocator {
             };
 
             // Add the two buddies to the linked list
-            serial_println!("added a size {} at {}", buddy_size_class, current_block_clone.starting_address);
             self.memory_blocks[buddy_size_class].push_back(left_buddy);
-            serial_println!("added a size {} at {}", buddy_size_class, current_block_clone.starting_address + PAGE_SIZE * 2usize.pow(buddy_size_class as u32));
             self.memory_blocks[buddy_size_class].push_back(right_buddy);
 
             // Return only the (allocated) left buddy

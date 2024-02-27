@@ -12,8 +12,8 @@ long_mode_start:
     mov gs, ax
 
     ; call the rust _start function
-    extern _main
-    call _main
+    extern _start
+    call _start
 
     ; print OKAY to the screen
     mov rax, 0x2f592f412f4b2f4f

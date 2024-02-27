@@ -12,6 +12,10 @@
 #![feature(new_uninit)]
 #![feature(str_from_raw_parts)]
 #![feature(extract_if)]
+#![feature(custom_test_frameworks)]
+
+#![test_runner(crate::test_runner)]
+#![reexport_test_harness_main = "test_main"]
 
 extern crate downcast_rs;
 extern crate alloc;
@@ -26,7 +30,7 @@ use crate::drivers::ps2::keyboard::PS2Keyboard;
 use crate::drivers::ps2::PS2DeviceType;
 use crate::fs::ext2::mount_filesystem;
 use crate::interrupts::{INTERRUPT_CONTROLLER, InterruptController};
-use crate::memory::MemoryManagementUnit;
+use crate::memory::MemoryManager;
 use crate::task::keyboard::print_key_inputs;
 use crate::task::executor::Executor;
 use crate::task::Task;
@@ -44,7 +48,10 @@ mod fs;
 mod serial;
 
 #[no_mangle]
-pub extern fn _main(multiboot_information_address: usize) {
+pub extern fn _start(multiboot_information_address: usize) {
+    #[cfg(test)]
+    test_main();
+
     init(multiboot_information_address);
 }
 
@@ -61,16 +68,16 @@ fn init(multiboot_information_address: usize) {
         Cr0::write(Cr0::read() | Cr0Flags::WRITE_PROTECT);
     }
 
-    let mut mmu = MemoryManagementUnit::new(boot_info);
+    let mut memory_manager = MemoryManager::new(boot_info);
 
     InterruptController::init_interrupts();
     //init_acpi(boot_info, &mut allocator, &mut active_page_table); // TODO: Fix this
 
 
-    let mut ahci_devices = drivers::pci::ahci::init(&mut mmu);
-    let fs = mount_filesystem(&mut mmu, &mut ahci_devices[0]);
+    let mut ahci_devices = drivers::pci::ahci::init(&mut memory_manager);
+    let fs = mount_filesystem(&mut memory_manager, &mut ahci_devices[0]);
 
-    let file = fs.get_file_contents(&mut mmu, &mut ahci_devices[0], "/files/file.txt").unwrap();
+    let file = fs.get_file_contents(&mut memory_manager, &mut ahci_devices[0], "/files/file.txt").unwrap();
     let string_content = core::str::from_utf8(file.as_slice()).expect("Failed to read file");
 
     println!("Reading file /files/file.txt...");
@@ -92,21 +99,11 @@ fn init(multiboot_information_address: usize) {
     executor.run();
 }
 
-fn print_memory_areas(multiboot_information_address: usize) {
-    let boot_info = unsafe{ arch::multiboot2::load(multiboot_information_address) };
-    let memory_map = boot_info.memory_map().expect("Memory map tag required");
-    let elf_symbols = boot_info.elf_symbols().expect("Elf symbols tag required");
-
-    serial_println!("Memory areas:");
-    for entry in memory_map.entries() {
-        serial_println!("    start: 0x{:x}, length: 0x{:x}",
-                 entry.base_addr, entry.size);
-    }
-
-    serial_println!("kernel sections:");
-    for section in elf_symbols.section_headers() {
-        serial_println!("    addr: 0x{:x}, size: 0x{:x}, flags: 0x{:x}",
-                 section.start_address(), section.size(), section.flags());
+#[cfg(test)]
+pub fn test_runner(tests: &[&dyn Fn()]) {
+    println!("Running {} tests", tests.len());
+    for test in tests {
+        test();
     }
 }
 

@@ -67,12 +67,12 @@ pub trait FrameAllocator {
     fn deallocate_frame(&mut self, frame: Frame);
 }
 
-pub struct MemoryManagementUnit {
+pub struct MemoryManager {
     pub frame_allocator: BuddyAllocator,
     pub active_page_table: ActivePageTable,
 }
 
-impl MemoryManagementUnit {
+impl MemoryManager {
     pub fn new(boot_information: &BootInformation) -> Self {
         info!("mm: init...");
 
