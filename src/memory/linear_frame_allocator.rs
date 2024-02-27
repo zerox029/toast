@@ -1,5 +1,4 @@
 use alloc::vec::Vec;
-use futures_util::FutureExt;
 use crate::arch::multiboot2::structures::{MemoryMapEntry, MemoryMapIter};
 use crate::memory::{Frame, FrameAllocator};
 

@@ -1,5 +1,3 @@
-use alloc::vec;
-use alloc::vec::Vec;
 use core::ops::DerefMut;
 use crate::arch::multiboot2::BootInformation;
 use crate::memory::linear_frame_allocator::LinearFrameAllocator;
@@ -87,18 +85,18 @@ impl MemoryManagementUnit {
         let multiboot_start = boot_information.start_address();
         let multiboot_end = multiboot_start + (boot_information.total_size as usize);
 
-        let mut frame_allocator = LinearFrameAllocator::new(kernel_start, kernel_end,
-                                                            multiboot_start, multiboot_end,
-                                                            memory_map.entries());
+        let mut linear_allocator = LinearFrameAllocator::new(kernel_start, kernel_end,
+                                                             multiboot_start, multiboot_end,
+                                                             memory_map.entries());
 
-        let mut active_page_table = remap_kernel(&mut frame_allocator, boot_information);
-        init_heap(active_page_table.deref_mut(), &mut frame_allocator);
+        let mut active_page_table = remap_kernel(&mut linear_allocator, boot_information);
+        init_heap(active_page_table.deref_mut(), &mut linear_allocator);
 
         // Switch to the buddy allocator
         let mut buddy_allocator = BuddyAllocator::new(kernel_start, kernel_end,
                                                   multiboot_start, multiboot_end,
                                                   memory_map.entries());
-        buddy_allocator.set_allocated_frames(frame_allocator.allocated_frames());
+        buddy_allocator.set_allocated_frames(linear_allocator.allocated_frames());
 
         Self {
             frame_allocator: buddy_allocator,
