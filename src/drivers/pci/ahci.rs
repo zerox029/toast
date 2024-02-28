@@ -13,9 +13,9 @@ use core::ffi::c_void;
 use core::mem::size_of;
 use core::ops::DerefMut;
 use core::ptr;
-use crate::{print, warn, info, ok};
+use crate::{print, warn, info, ok, serial_println};
 use crate::drivers::pci::{find_all_pci_devices, PCIDevice};
-use crate::memory::{Frame, MemoryManager};
+use crate::memory::{Frame, INSTANCE, MemoryManager};
 use crate::memory::paging::entry::EntryFlags;
 use crate::utils::bitutils::is_nth_bit_set;
 use crate::memory::FrameAllocator;
@@ -383,16 +383,13 @@ struct AHCIController {
 }
 
 impl AHCIController {
-    fn new(memory_manager: &mut MemoryManager, pci_device: PCIDevice) -> Self {
+    fn new(pci_device: PCIDevice) -> Self {
         // Memory map HBA registers as uncacheable.
         let bar5 = pci_device.bar5(0);
         let start_frame = Frame::containing_address(bar5 as usize);
         let end_frame = Frame::containing_address(bar5 as usize + 0x10FF);
         for frame in Frame::range_inclusive(start_frame, end_frame) {
-            memory_manager
-                .active_page_table
-                .deref_mut()
-                .identity_map(frame, EntryFlags::WRITABLE | EntryFlags::NO_CACHE, &mut memory_manager.frame_allocator);
+            MemoryManager::instance().lock().pmm_identity_map(frame, EntryFlags::WRITABLE | EntryFlags::NO_CACHE);
         }
 
         let hba = unsafe { &*(bar5 as *mut HbaMemoryRegisters) };
@@ -453,7 +450,7 @@ impl AHCIDevice {
     }
 
     /// Reads byte_count bytes from the device at address offset. Returns the number of bytes reads from the device
-    pub fn read_from_device(&mut self, memory_manager: &mut MemoryManager, byte_offset: u64, byte_count: u64, buffer: *mut c_void) -> usize {
+    pub fn read_from_device(&mut self, byte_offset: u64, byte_count: u64, buffer: *mut c_void) -> usize {
         let identity = &self.identity.expect("ahci: cannot read from an unidentified device");
         let sector_size = identity.sector_bytes as u64;
 
@@ -471,40 +468,42 @@ impl AHCIDevice {
             return 0;
         }
 
-        let read_buffer_address = memory_manager.pmm_alloc(byte_count as usize, EntryFlags::WRITABLE)
+        let read_buffer_address = MemoryManager::instance().lock().pmm_alloc(byte_count as usize, EntryFlags::WRITABLE)
             .expect("ahci: could not allocate the memory for device read");
 
         let read_sectors = self.issue_read(start_block, block_count, read_buffer_address as *mut c_void);
 
         unsafe { ptr::copy_nonoverlapping((read_buffer_address + (byte_offset % sector_size) as usize) as *const c_void, buffer, byte_count as usize); }
 
-        memory_manager.pmm_free(byte_count as usize, read_buffer_address);
+        MemoryManager::instance().lock().pmm_free(byte_count as usize, read_buffer_address);
 
         read_sectors - read_sectors.abs_diff(byte_count as usize)
     }
 
-    pub fn write_to_device(&mut self, memory_manager: &mut MemoryManager, byte_offset: u64, byte_count: u64, buffer: *mut c_void) {
+    pub fn write_to_device(&mut self, byte_offset: u64, byte_count: u64, buffer: *mut c_void) {
         let identity = &self.identity.expect("ahci: cannot write to an unidentified device");
         let sector_size = identity.sector_bytes as u64;
 
         let start_block = byte_offset / sector_size;
         let block_count = byte_count.div_ceil(sector_size);
 
-        let write_buffer_address = memory_manager.pmm_alloc(byte_count as usize, EntryFlags::WRITABLE)
-            .expect("ahci: could not allocate the memory for device write");
+        let write_buffer_address = {
+            MemoryManager::instance().lock().pmm_alloc(byte_count as usize, EntryFlags::WRITABLE)
+                .expect("ahci: could not allocate the memory for device write")
+        };
 
         if byte_offset % sector_size != 0 {
-            self.read_from_device(memory_manager, byte_offset, sector_size, write_buffer_address as *mut c_void);
+            self.read_from_device(byte_offset, sector_size, write_buffer_address as *mut c_void);
         }
         if byte_count % sector_size != 0 {
-            self.read_from_device(memory_manager, byte_offset + block_count - 1, sector_size, write_buffer_address as *mut c_void);
+            self.read_from_device(byte_offset + block_count - 1, sector_size, write_buffer_address as *mut c_void);
         }
 
         unsafe { ptr::copy_nonoverlapping(buffer, (write_buffer_address + (byte_offset % sector_size) as usize) as *mut c_void, byte_count as usize)};
 
         self.issue_write(start_block, block_count, write_buffer_address as *mut c_void);
 
-        memory_manager.pmm_free(byte_count as usize, write_buffer_address);
+        MemoryManager::instance().lock().pmm_free(byte_count as usize, write_buffer_address);
 
         //written_sectors - written_sectors.abs_diff(byte_count as usize)
     }
@@ -728,11 +727,11 @@ impl AHCICommand {
     }
 }
 
-pub fn init(memory_manager: &mut MemoryManager) -> Vec<AHCIDevice> {
+pub fn init() -> Vec<AHCIDevice> {
     info!("ahci: init...");
 
     let ahci_pci_device = find_all_pci_devices().into_iter().find(is_ahci_controller).expect("ahci: could not locate the ahci controller");
-    let ahci_controller = AHCIController::new(memory_manager, ahci_pci_device);
+    let ahci_controller = AHCIController::new(ahci_pci_device);
 
     info!("ahci: controller version {}.{}", ahci_controller.version_maj, ahci_controller.version_min);
 
@@ -751,7 +750,7 @@ pub fn init(memory_manager: &mut MemoryManager) -> Vec<AHCIDevice> {
     let mut devices = Vec::new();
     for port in 0..ahci_controller.port_count as usize {
         if is_nth_bit_set(ahci_controller.hba.pi as usize, port) {
-            let device = init_port(memory_manager, &ahci_controller, port, ahci_controller.bar5 as usize + (0x100 + port * 0x80));
+            let device = init_port(&ahci_controller, port, ahci_controller.bar5 as usize + (0x100 + port * 0x80));
             if let Some(ahci_device) = device {
                 devices.push(ahci_device);
             }
@@ -761,7 +760,7 @@ pub fn init(memory_manager: &mut MemoryManager) -> Vec<AHCIDevice> {
     devices
 }
 
-fn init_port(memory_manager: &mut MemoryManager, controller: &AHCIController, port_index: usize, port_address: usize) -> Option<AHCIDevice> {
+fn init_port(controller: &AHCIController, port_index: usize, port_address: usize) -> Option<AHCIDevice> {
     let mut ahci_device = AHCIDevice::new(controller.clone(), port_index, port_address); // TODO: Allocate on heap instead of cloning
 
     match ahci_device.port_registers.sig {
@@ -774,9 +773,10 @@ fn init_port(memory_manager: &mut MemoryManager, controller: &AHCIController, po
 
     // TODO: Allocate memory for these more efficiently, no need to allocate a new frame every time
     // Allocate physical memory for the command list
-    let command_list_base =
-        memory_manager.pmm_alloc(1, EntryFlags::WRITABLE | EntryFlags::NO_CACHE)
-        .unwrap_or_else(|| panic!("ahci: could not allocate the memory for the command list on port {}", port_index));
+    let command_list_base = {
+        MemoryManager::instance().lock().pmm_alloc(1, EntryFlags::WRITABLE | EntryFlags::NO_CACHE)
+            .unwrap_or_else(|| panic!("ahci: could not allocate the memory for the command list on port {}", port_index))
+    };
 
     ahci_device.port_registers.clb = command_list_base as u32;
     ahci_device.port_registers.clbu = (command_list_base >> 32) as u32;
@@ -786,18 +786,21 @@ fn init_port(memory_manager: &mut MemoryManager, controller: &AHCIController, po
         let header_address = command_list_base + i * size_of::<CommandHeader>();
         let command_header = unsafe{ &mut *(header_address as *mut CommandHeader) };
 
-        let command_table_base_address =
-            memory_manager.pmm_alloc(1, EntryFlags::WRITABLE | EntryFlags::NO_CACHE)
-                .unwrap_or_else(|| panic!("ahci: could not allocate the memory for the command table {} on port {}", i, port_index));
+        let command_table_base_address = {
+            MemoryManager::instance().lock().pmm_alloc(1, EntryFlags::WRITABLE | EntryFlags::NO_CACHE)
+                .unwrap_or_else(|| panic!("ahci: could not allocate the memory for the command table {} on port {}", i, port_index))
+        };
+
 
         command_header.ctba = command_table_base_address as u32;
         command_header.ctbau = (command_table_base_address >> 32) as u32;
     }
 
     // Allocate physical memory for the received FIS
-    let fis_base_base_address =
-        memory_manager.pmm_alloc(1, EntryFlags::WRITABLE | EntryFlags::NO_CACHE)
-            .unwrap_or_else(|| panic!("ahci: could not allocate the memory for the FIS on port {}", port_index));
+    let fis_base_base_address = {
+        MemoryManager::instance().lock().pmm_alloc(1, EntryFlags::WRITABLE | EntryFlags::NO_CACHE)
+            .unwrap_or_else(|| panic!("ahci: could not allocate the memory for the FIS on port {}", port_index))
+    };
 
     ahci_device.port_registers.fb = fis_base_base_address as u32;
     ahci_device.port_registers.fbu = (fis_base_base_address >> 32) as u32;
@@ -805,15 +808,17 @@ fn init_port(memory_manager: &mut MemoryManager, controller: &AHCIController, po
     // Setting start and FIS receive enable flags
     ahci_device.port_registers.cmd |= (1 << 0) | (1 << 4);
 
-    let identity_address = memory_manager.pmm_alloc(size_of::<AHCIIdentifyResponse>(), EntryFlags::WRITABLE | EntryFlags::NO_CACHE)
-        .expect("ahci: could not allocate the memory for device identification");
+    let identity_address = {
+        MemoryManager::instance().lock().pmm_alloc(size_of::<AHCIIdentifyResponse>(), EntryFlags::WRITABLE | EntryFlags::NO_CACHE)
+            .expect("ahci: could not allocate the memory for device identification")
+    };
 
     ahci_device.issue_identify(identity_address as *mut AHCIIdentifyResponse);
 
     let sata_identify = unsafe{&*(identity_address as *mut AHCIIdentifyResponse)};
     ahci_device.identity = Some(sata_identify.clone());
 
-    memory_manager.pmm_free(1, identity_address);
+    MemoryManager::instance().lock().pmm_free(1, identity_address);
 
     Some(ahci_device)
 }

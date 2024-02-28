@@ -119,11 +119,11 @@ bitflags! {
 }
 
 impl Inode {
-    pub(crate) fn get_from_id(memory_manager: &mut MemoryManager, drive: &mut AHCIDevice, superblock: &Superblock, inode_id: usize) -> Self {
+    pub(crate) fn get_from_id(drive: &mut AHCIDevice, superblock: &Superblock, inode_id: usize) -> Self {
         let group_id = Inode::get_containing_block_group_id(superblock, inode_id);
         let inode_index = Self::get_local_table_index(superblock, inode_id);
 
-        let block_group_descriptor = BlockGroupDescriptor::read_table_entry(memory_manager, drive, superblock, group_id);
+        let block_group_descriptor = BlockGroupDescriptor::read_table_entry(drive, superblock, group_id);
         let table_address = block_group_descriptor.inode_table_block_address.read();
 
         let containing_block = inode_index * superblock.inode_size() as usize / (1024 << superblock.log_block_size.read()) as usize;
@@ -132,11 +132,11 @@ impl Inode {
         let inode_address_bytes = inode_address * (1024 << superblock.log_block_size.read()) + inode_index * superblock.inode_size() as usize;
 
         let mut inode = MaybeUninit::<Inode>::uninit();
-        drive.read_from_device(memory_manager, inode_address_bytes as u64, size_of::<Inode>() as u64, inode.as_mut_ptr() as *mut c_void);
+        drive.read_from_device(inode_address_bytes as u64, size_of::<Inode>() as u64, inode.as_mut_ptr() as *mut c_void);
         unsafe { inode.assume_init() }
     }
 
-    pub(crate) fn print_content(&self, memory_manager: &mut MemoryManager, drive: &mut AHCIDevice, superblock: &Superblock) {
+    pub(crate) fn print_content(&self, drive: &mut AHCIDevice, superblock: &Superblock) {
         let initial_address = self.block.read()[0] * (1024 << superblock.log_block_size.read());
         let mut file_address = initial_address;
 
@@ -144,7 +144,7 @@ impl Inode {
         // Read the content of the pointed block
         loop {
             let mut file = MaybeUninit::<DirectoryEntry>::uninit();
-            drive.read_from_device(memory_manager, file_address as u64, size_of::<DirectoryEntry>() as u64, file.as_mut_ptr() as *mut c_void);
+            drive.read_from_device(file_address as u64, size_of::<DirectoryEntry>() as u64, file.as_mut_ptr() as *mut c_void);
             let file = unsafe { file.assume_init() };
 
             file.name();
@@ -163,12 +163,12 @@ impl Inode {
 
     /// Looks for an inode with the given name in the current inode's children.
     /// Returns None if the requested Inode was not present
-    pub(crate) fn find_child_inode(&self, memory_manager: &mut MemoryManager, drive: &mut AHCIDevice, superblock: &Superblock, name: &str) -> Option<Inode> {
+    pub(crate) fn find_child_inode(&self, drive: &mut AHCIDevice, superblock: &Superblock, name: &str) -> Option<Inode> {
         if matches!(self.mode.read(), InodeMode::DIRECTORY) {
             panic!("ext2: not a directory")
         }
 
-        let mut inode_data = self.get_content(memory_manager, drive, superblock);
+        let mut inode_data = self.get_content(drive, superblock);
 
         let mut read_bytes = 0;
         while read_bytes < inode_data.len() {
@@ -176,7 +176,7 @@ impl Inode {
             let directory_entry = unsafe { &*directory_entry_pointer };
 
             if directory_entry.name() == name {
-                return Some(Self::get_from_id(memory_manager, drive, superblock, directory_entry.inode.read() as usize));
+                return Some(Self::get_from_id(drive, superblock, directory_entry.inode.read() as usize));
             }
 
             read_bytes += directory_entry.rec_len.read() as usize;
@@ -186,7 +186,7 @@ impl Inode {
         None
     }
 
-    pub(crate) fn get_content(&self, memory_manager: &mut MemoryManager, drive: &mut AHCIDevice, superblock: &Superblock) -> Vec<u8> {
+    pub(crate) fn get_content(&self, drive: &mut AHCIDevice, superblock: &Superblock) -> Vec<u8> {
         let file_start_address = self.block.read()[0] as usize * superblock.block_size_bytes();
 
         let mut inode_data = vec![0u8; self.size.read() as usize];
@@ -194,7 +194,7 @@ impl Inode {
             // First 12 blocks, direct indexing
             if block_number < 12 {
                 let write_address = (inode_data.as_mut_ptr() as usize + block_number * superblock.block_size_bytes()) as *mut c_void;
-                drive.read_from_device(memory_manager, file_start_address as u64, size_of::<DirectoryEntry>() as u64, write_address);
+                drive.read_from_device(file_start_address as u64, size_of::<DirectoryEntry>() as u64, write_address);
             }
 
             // 13th block, indirect indexing

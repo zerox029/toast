@@ -1,4 +1,6 @@
 use core::ops::DerefMut;
+use conquer_once::spin::OnceCell;
+use spin::Mutex;
 use crate::arch::multiboot2::BootInformation;
 use crate::memory::linear_frame_allocator::LinearFrameAllocator;
 use crate::memory::paging::{ActivePageTable, Page, PhysicalAddress};
@@ -13,6 +15,8 @@ pub mod linear_frame_allocator;
 pub mod paging;
 pub mod heap_allocator;
 pub mod buddy_allocator;
+
+pub static INSTANCE: OnceCell<Mutex<MemoryManager>> = OnceCell::uninit();
 
 pub const PAGE_SIZE: usize = 4096;
 
@@ -69,12 +73,12 @@ pub trait FrameAllocator {
 }
 
 pub struct MemoryManager {
-    pub frame_allocator: BuddyAllocator,
-    pub active_page_table: ActivePageTable,
+    frame_allocator: BuddyAllocator,
+    active_page_table: ActivePageTable,
 }
 
 impl MemoryManager {
-    pub fn new(boot_information: &BootInformation) -> Self {
+    pub fn init(boot_information: &BootInformation) {
         info!("mm: init...");
 
         let memory_map = boot_information.memory_map().expect("Memory map tag required");
@@ -101,10 +105,16 @@ impl MemoryManager {
 
         buddy_allocator.set_allocated_frames(linear_allocator.allocated_frames());
 
-        Self {
+        let memory_manager = Self {
             frame_allocator: buddy_allocator,
             active_page_table,
-        }
+        };
+
+        INSTANCE.try_init_once(|| Mutex::new(memory_manager)).expect("mm: cannot initialize memory manager more than once");
+    }
+
+    pub fn instance() -> &'static Mutex<MemoryManager> {
+        INSTANCE.try_get().expect("mm: memory manager uninitialized")
     }
 
     pub fn vmm_alloc() {
@@ -141,7 +151,8 @@ impl MemoryManager {
         alloc_start
     }
 
-    pub fn pmm_zero_alloc() {
+    pub fn pmm_zero_alloc(&mut self, size: usize, flags: EntryFlags) {
+
         unimplemented!();
     }
 
@@ -160,5 +171,9 @@ impl MemoryManager {
 
             self.active_page_table.deref_mut().unmap_no_dealloc(&page);
         }
+    }
+
+    pub fn pmm_identity_map(&mut self, frame: Frame, flags: EntryFlags) {
+        self.active_page_table.deref_mut().identity_map(frame, flags, &mut self.frame_allocator);
     }
 }

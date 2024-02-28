@@ -19,13 +19,15 @@ extern crate alloc;
 use core::panic::PanicInfo;
 use x86_64::registers::model_specific::Efer;
 use x86_64::registers::control::{Cr0, Cr0Flags, EferFlags};
+use crate::acpi::init_acpi;
 use crate::cpuid::CPU_INFO;
 use crate::drivers::ps2::init_ps2_controller;
 use crate::drivers::ps2::keyboard::PS2Keyboard;
 use crate::drivers::ps2::PS2DeviceType;
 use crate::fs::ext2::mount_filesystem;
 use crate::interrupts::{INTERRUPT_CONTROLLER, InterruptController};
-use crate::memory::MemoryManager;
+use crate::memory::{INSTANCE, MemoryManager};
+use crate::memory::paging::entry::EntryFlags;
 use crate::task::keyboard::print_key_inputs;
 use crate::task::executor::Executor;
 use crate::task::Task;
@@ -60,15 +62,15 @@ fn init(multiboot_information_address: usize) {
         Cr0::write(Cr0::read() | Cr0Flags::WRITE_PROTECT);
     }
 
-    let mut memory_manager = MemoryManager::new(boot_info);
+    MemoryManager::init(boot_info);
 
     InterruptController::init_interrupts();
-    //init_acpi(boot_info, &mut allocator, &mut active_page_table); // TODO: Fix this
+    // init_acpi(boot_info); // TODO: Fix this
 
-    let mut ahci_devices = drivers::pci::ahci::init(&mut memory_manager);
-    let fs = mount_filesystem(&mut memory_manager, &mut ahci_devices[0]);
+    let mut ahci_devices = drivers::pci::ahci::init();
+    let fs = mount_filesystem(&mut ahci_devices[0]);
 
-    let file = fs.get_file_contents(&mut memory_manager, &mut ahci_devices[0], "/files/file.txt").unwrap();
+    let file = fs.get_file_contents(&mut ahci_devices[0], "/files/file.txt").unwrap();
     let string_content = core::str::from_utf8(file.as_slice()).expect("Failed to read file");
 
     println!("Reading file /files/file.txt...");

@@ -145,10 +145,10 @@ pub(crate) struct Superblock {
     _unused: RO<[u8; 760]>,
 }
 impl Superblock {
-    pub(crate) fn read_from_disk(memory_manager: &mut MemoryManager, drive: &mut AHCIDevice) -> Superblock {
+    pub(crate) fn read_from_disk(drive: &mut AHCIDevice) -> Superblock {
         let mut superblock = MaybeUninit::<Superblock>::uninit();
 
-        drive.read_from_device(memory_manager, SUPERBLOCK_OFFSET as u64, size_of::<Superblock>() as u64, superblock.as_mut_ptr() as *mut c_void);
+        drive.read_from_device(SUPERBLOCK_OFFSET as u64, size_of::<Superblock>() as u64, superblock.as_mut_ptr() as *mut c_void);
         let superblock = unsafe { superblock.assume_init() };
 
         assert_eq!(superblock.ext2_signature.read(), EXT2_SIGNATURE);
@@ -270,12 +270,12 @@ pub(crate) struct BlockGroupDescriptor {
 }
 
 impl BlockGroupDescriptor {
-    pub(crate) fn read_table_entry(memory_manager: &mut MemoryManager, drive: &mut AHCIDevice, superblock: &Superblock, index: usize) -> Self {
+    pub(crate) fn read_table_entry(drive: &mut AHCIDevice, superblock: &Superblock, index: usize) -> Self {
         let first_entry_address = (1024 << superblock.log_block_size.read()) * if superblock.log_block_size.read() == 0 { 2 } else { 1 };
         let offset = first_entry_address + index * size_of::<BlockGroupDescriptor>();
 
         let mut entry = MaybeUninit::<BlockGroupDescriptor>::uninit();
-        drive.read_from_device(memory_manager, offset as u64, size_of::<BlockGroupDescriptor>() as u64, entry.as_mut_ptr() as *mut c_void);
+        drive.read_from_device(offset as u64, size_of::<BlockGroupDescriptor>() as u64, entry.as_mut_ptr() as *mut c_void);
         unsafe { entry.assume_init() }
     }
 }
