@@ -471,15 +471,14 @@ impl AHCIDevice {
             return 0;
         }
 
-        let frame = memory_manager.frame_allocator.allocate_frame().expect("ahci: could not allocate the memory for device read");
-        let read_buffer_address = frame.start_address();
-        memory_manager.active_page_table.deref_mut().identity_map(frame, EntryFlags::WRITABLE, &mut memory_manager.frame_allocator);
+        let read_buffer_address = memory_manager.pmm_alloc(byte_count as usize, EntryFlags::WRITABLE)
+            .expect("ahci: could not allocate the memory for device read");
 
         let read_sectors = self.issue_read(start_block, block_count, read_buffer_address as *mut c_void);
 
         unsafe { ptr::copy_nonoverlapping((read_buffer_address + (byte_offset % sector_size) as usize) as *const c_void, buffer, byte_count as usize); }
 
-        // TODO: Deallocate the frame
+        memory_manager.pmm_free(byte_count as usize, read_buffer_address);
 
         read_sectors - read_sectors.abs_diff(byte_count as usize)
     }
@@ -491,9 +490,8 @@ impl AHCIDevice {
         let start_block = byte_offset / sector_size;
         let block_count = byte_count.div_ceil(sector_size);
 
-        let write_buffer_frame = memory_manager.frame_allocator.allocate_frame().expect("ahci: could not allocate the memory for device write");
-        let write_buffer_address = write_buffer_frame.start_address();
-        memory_manager.active_page_table.deref_mut().identity_map(write_buffer_frame, EntryFlags::WRITABLE, &mut memory_manager.frame_allocator);
+        let write_buffer_address = memory_manager.pmm_alloc(byte_count as usize, EntryFlags::WRITABLE)
+            .expect("ahci: could not allocate the memory for device write");
 
         if byte_offset % sector_size != 0 {
             self.read_from_device(memory_manager, byte_offset, sector_size, write_buffer_address as *mut c_void);
@@ -506,7 +504,7 @@ impl AHCIDevice {
 
         self.issue_write(start_block, block_count, write_buffer_address as *mut c_void);
 
-        // TODO: Deallocate the frame
+        memory_manager.pmm_free(byte_count as usize, write_buffer_address);
 
         //written_sectors - written_sectors.abs_diff(byte_count as usize)
     }
@@ -764,7 +762,7 @@ pub fn init(memory_manager: &mut MemoryManager) -> Vec<AHCIDevice> {
 }
 
 fn init_port(memory_manager: &mut MemoryManager, controller: &AHCIController, port_index: usize, port_address: usize) -> Option<AHCIDevice> {
-    let mut ahci_device = AHCIDevice::new(controller.clone(), port_index, port_address); // TODO: Allocate on stack instead of cloning
+    let mut ahci_device = AHCIDevice::new(controller.clone(), port_index, port_address); // TODO: Allocate on heap instead of cloning
 
     match ahci_device.port_registers.sig {
         SATA_SIG_ATA => ok!("ahci: sata drive found on port {}", port_index),
@@ -776,10 +774,9 @@ fn init_port(memory_manager: &mut MemoryManager, controller: &AHCIController, po
 
     // TODO: Allocate memory for these more efficiently, no need to allocate a new frame every time
     // Allocate physical memory for the command list
-    let command_list_frame = memory_manager.frame_allocator.allocate_frame()
+    let command_list_base =
+        memory_manager.pmm_alloc(1, EntryFlags::WRITABLE | EntryFlags::NO_CACHE)
         .unwrap_or_else(|| panic!("ahci: could not allocate the memory for the command list on port {}", port_index));
-    let command_list_base = command_list_frame.start_address();
-    memory_manager.active_page_table.deref_mut().identity_map(command_list_frame, EntryFlags::WRITABLE | EntryFlags::NO_CACHE, &mut memory_manager.frame_allocator);
 
     ahci_device.port_registers.clb = command_list_base as u32;
     ahci_device.port_registers.clbu = (command_list_base >> 32) as u32;
@@ -789,36 +786,34 @@ fn init_port(memory_manager: &mut MemoryManager, controller: &AHCIController, po
         let header_address = command_list_base + i * size_of::<CommandHeader>();
         let command_header = unsafe{ &mut *(header_address as *mut CommandHeader) };
 
-        let command_table_frame = memory_manager.frame_allocator.allocate_frame()
-            .unwrap_or_else(|| panic!("ahci: could not allocate the memory for the command table {} on port {}", i, port_index));
-        let command_table_base_address = command_table_frame.start_address();
-        memory_manager.active_page_table.deref_mut().identity_map(command_table_frame, EntryFlags::WRITABLE | EntryFlags::NO_CACHE, &mut memory_manager.frame_allocator);
+        let command_table_base_address =
+            memory_manager.pmm_alloc(1, EntryFlags::WRITABLE | EntryFlags::NO_CACHE)
+                .unwrap_or_else(|| panic!("ahci: could not allocate the memory for the command table {} on port {}", i, port_index));
 
         command_header.ctba = command_table_base_address as u32;
         command_header.ctbau = (command_table_base_address >> 32) as u32;
     }
 
     // Allocate physical memory for the received FIS
-    let fis_base_frame = memory_manager.frame_allocator.allocate_frame()
-        .unwrap_or_else(|| panic!("ahci: could not allocate the memory for the FIS on port {}", port_index));
-    let fis_base_base_address = fis_base_frame.start_address();
-    memory_manager.active_page_table.deref_mut().identity_map(fis_base_frame, EntryFlags::WRITABLE | EntryFlags::NO_CACHE, &mut memory_manager.frame_allocator);
+    let fis_base_base_address =
+        memory_manager.pmm_alloc(1, EntryFlags::WRITABLE | EntryFlags::NO_CACHE)
+            .unwrap_or_else(|| panic!("ahci: could not allocate the memory for the FIS on port {}", port_index));
+
     ahci_device.port_registers.fb = fis_base_base_address as u32;
     ahci_device.port_registers.fbu = (fis_base_base_address >> 32) as u32;
 
     // Setting start and FIS receive enable flags
     ahci_device.port_registers.cmd |= (1 << 0) | (1 << 4);
 
-    let identity = memory_manager.frame_allocator.allocate_frame().expect("ahci: could not allocate the memory for device identification");
-    let identity_address = identity.start_address();
-    memory_manager.active_page_table.deref_mut().identity_map(identity, EntryFlags::WRITABLE | EntryFlags::NO_CACHE, &mut memory_manager.frame_allocator);
+    let identity_address = memory_manager.pmm_alloc(size_of::<AHCIIdentifyResponse>(), EntryFlags::WRITABLE | EntryFlags::NO_CACHE)
+        .expect("ahci: could not allocate the memory for device identification");
 
     ahci_device.issue_identify(identity_address as *mut AHCIIdentifyResponse);
 
     let sata_identify = unsafe{&*(identity_address as *mut AHCIIdentifyResponse)};
     ahci_device.identity = Some(sata_identify.clone());
 
-    // TODO: Deallocate the memory
+    memory_manager.pmm_free(1, identity_address);
 
     Some(ahci_device)
 }

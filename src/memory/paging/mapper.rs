@@ -107,9 +107,14 @@ impl Mapper {
 
     /// Unmaps the given page and adds all freed frames to the given
     /// `FrameAllocator`.
-    pub fn unmap<A>(&mut self, page: Page, allocator: &mut A)
-        where A: FrameAllocator
-    {
+    pub fn unmap<A>(&mut self, page: Page, allocator: &mut A) where A: FrameAllocator {
+        let frame = self.unmap_no_dealloc(&page).unwrap();
+
+        // TODO free p(1,2,3) table if empty
+        allocator.deallocate_frame(frame);
+    }
+
+    pub fn unmap_no_dealloc(&mut self, page: &Page) -> Option<Frame> {
         assert!(self.translate(page.start_address()).is_some());
 
         let p1 = self.p4_mut()
@@ -117,14 +122,15 @@ impl Mapper {
             .and_then(|p3| p3.next_table_mut(page.p3_index()))
             .and_then(|p2| p2.next_table_mut(page.p2_index()))
             .expect("mapping code does not support huge pages");
-        let frame = p1[page.p1_index()].pointed_frame().unwrap();
+
+        let frame = p1[page.p1_index()].pointed_frame();
         p1[page.p1_index()].set_unused();
 
         use x86_64::instructions::tlb;
         use x86_64::VirtAddr;
         tlb::flush(VirtAddr::new(page.start_address() as u64));
-        // TODO free p(1,2,3) table if empty
-        allocator.deallocate_frame(frame);
+
+        frame
     }
 
     fn check_is_unmapped<A>(&mut self, page: Page, allocator: &mut A) -> bool where A: FrameAllocator {

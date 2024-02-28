@@ -34,6 +34,7 @@ impl Entry {
 }
 
 bitflags! {
+    #[derive(Copy, Clone)]
     pub struct EntryFlags: u64 {
         const PRESENT =         1 << 0;
         const WRITABLE =        1 << 1;

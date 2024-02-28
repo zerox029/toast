@@ -12,14 +12,9 @@
 #![feature(new_uninit)]
 #![feature(str_from_raw_parts)]
 #![feature(extract_if)]
-#![feature(custom_test_frameworks)]
-
-#![test_runner(crate::test_runner)]
-#![reexport_test_harness_main = "test_main"]
 
 extern crate downcast_rs;
 extern crate alloc;
-extern crate rlibc;
 
 use core::panic::PanicInfo;
 use x86_64::registers::model_specific::Efer;
@@ -48,10 +43,7 @@ mod fs;
 mod serial;
 
 #[no_mangle]
-pub extern fn _start(multiboot_information_address: usize) {
-    #[cfg(test)]
-    test_main();
-
+pub extern fn _entry(multiboot_information_address: usize) {
     init(multiboot_information_address);
 }
 
@@ -73,7 +65,6 @@ fn init(multiboot_information_address: usize) {
     InterruptController::init_interrupts();
     //init_acpi(boot_info, &mut allocator, &mut active_page_table); // TODO: Fix this
 
-
     let mut ahci_devices = drivers::pci::ahci::init(&mut memory_manager);
     let fs = mount_filesystem(&mut memory_manager, &mut ahci_devices[0]);
 
@@ -94,17 +85,12 @@ fn init(multiboot_information_address: usize) {
         }
     }
 
+    #[cfg(test)]
+    serial_println!("WE ARE IN TEST");
+
     print!(">");
 
     executor.run();
-}
-
-#[cfg(test)]
-pub fn test_runner(tests: &[&dyn Fn()]) {
-    println!("Running {} tests", tests.len());
-    for test in tests {
-        test();
-    }
 }
 
 #[panic_handler]

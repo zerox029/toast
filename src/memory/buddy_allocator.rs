@@ -105,7 +105,6 @@ impl BuddyAllocator {
 
             // Merge only if block is a buddy
             if memory_block.block_type == TopLevel {
-                serial_println!("deallocating a top level");
                 return;
             }
 
@@ -131,8 +130,6 @@ impl BuddyAllocator {
                         .extract_if(|block| block.starting_address == start_address);
                     let _extracted_buddy = self.memory_blocks[order]
                         .extract_if(|block| block.starting_address == buddy_address);
-
-                    serial_println!("merged");
 
                     self.memory_blocks[order + 1]
                         .iter_mut()

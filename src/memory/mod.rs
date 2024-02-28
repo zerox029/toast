@@ -1,9 +1,10 @@
 use core::ops::DerefMut;
 use crate::arch::multiboot2::BootInformation;
 use crate::memory::linear_frame_allocator::LinearFrameAllocator;
-use crate::memory::paging::{ActivePageTable, PhysicalAddress};
+use crate::memory::paging::{ActivePageTable, Page, PhysicalAddress};
 use crate::{print, info, serial_println};
 use crate::memory::buddy_allocator::BuddyAllocator;
+use crate::memory::paging::entry::EntryFlags;
 
 use self::paging::remap_kernel;
 use self::heap_allocator::{init_heap};
@@ -103,6 +104,61 @@ impl MemoryManager {
         Self {
             frame_allocator: buddy_allocator,
             active_page_table,
+        }
+    }
+
+    pub fn vmm_alloc() {
+        unimplemented!();
+    }
+
+    pub fn vmm_zero_alloc() {
+        unimplemented!();
+    }
+
+    pub fn vmm_free() {
+        unimplemented!();
+    }
+
+    /// Allocates enough physically contiguous identity mapped pages to cover the requested size
+    pub fn pmm_alloc(&mut self, size: usize, flags: EntryFlags) -> Option<usize> {
+        let page_count = size.div_ceil(PAGE_SIZE);
+        let order = (0..=10).find(|&x| 2usize.pow(x as u32) >= page_count).expect("pmm_alloc: could not allocate memory");
+
+        let alloc_start = self.frame_allocator.allocate_frames(order);
+
+        if let Some(alloc_start) = alloc_start {
+            let alloc_size = 2usize.pow(order as u32);
+
+            // Identity map the pages
+            for page_number in 0..alloc_size {
+                let page_address = alloc_start + PAGE_SIZE * page_number;
+                let frame = Frame::containing_address(page_address);
+
+                self.active_page_table.deref_mut().identity_map(frame, flags, &mut self.frame_allocator);
+            }
+        }
+
+        alloc_start
+    }
+
+    pub fn pmm_zero_alloc() {
+        unimplemented!();
+    }
+
+    pub fn pmm_free(&mut self, size: usize, address: usize) {
+        let page_count = size.div_ceil(PAGE_SIZE);
+        let order = (0..=10).find(|&x| 2usize.pow(x as u32) >= page_count).expect("pmm_alloc: could not allocate memory");
+
+        self.frame_allocator.deallocate_frames(address, order);
+
+        let freed_size = 2usize.pow(order as u32);
+
+        // Unmap the pages
+        for page_number in 0..freed_size {
+            let page_address = address + PAGE_SIZE * page_number;
+            let page = Page::containing_address(page_address);
+
+            self.active_page_table.deref_mut().unmap_no_dealloc(&page);
         }
     }
 }
