@@ -19,6 +19,7 @@ extern crate alloc;
 use core::panic::PanicInfo;
 use x86_64::registers::model_specific::Efer;
 use x86_64::registers::control::{Cr0, Cr0Flags, EferFlags};
+use crate::arch::gdt::{enable_user_mode};
 use crate::drivers::acpi::init_acpi;
 use crate::drivers::cpuid::CPU_INFO;
 use crate::drivers::ps2::init_ps2_controller;
@@ -70,6 +71,9 @@ fn init(multiboot_information_address: usize) {
     let file = fs.get_file_contents(&mut ahci_devices[0], "/files/file.txt").unwrap();
     let string_content = core::str::from_utf8(file.as_slice()).expect("Failed to read file");
 
+    enable_user_mode();
+
+/*
     println!("Reading file /files/file.txt...");
     println!("{}", string_content);
 
@@ -89,7 +93,7 @@ fn init(multiboot_information_address: usize) {
 
     print!(">");
 
-    executor.run();
+    executor.run();*/
 }
 
 #[panic_handler]

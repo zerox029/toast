@@ -33,16 +33,19 @@ impl fmt::Debug for InterruptStackFrame {
 pub extern "x86-interrupt" fn division_error_handler(stack_frame: InterruptStackFrame) {
     error!("Caught a division error interrupt!");
     println!("{:#?}", stack_frame);
+    unsafe { asm!("hlt;"); };
 }
 
 pub extern "x86-interrupt" fn debug_handler(stack_frame: InterruptStackFrame) {
     error!("Caught a debug interrupt!");
     println!("{:#?}", stack_frame);
+    unsafe { asm!("hlt;"); };
 }
 
 pub extern "x86-interrupt" fn non_maskable_interrupt_handler(stack_frame: InterruptStackFrame) {
     error!("Caught a non-maskable interrupt!");
     println!("{:#?}", stack_frame);
+    unsafe { asm!("hlt;"); };
 }
 
 pub extern "x86-interrupt" fn breakpoint_handler(stack_frame: InterruptStackFrame) {
@@ -53,46 +56,55 @@ pub extern "x86-interrupt" fn breakpoint_handler(stack_frame: InterruptStackFram
 pub extern "x86-interrupt" fn overflow_handler(stack_frame: InterruptStackFrame) {
     error!("Caught an overflow interrupt!");
     println!("{:#?}", stack_frame);
+    unsafe { asm!("hlt;"); };
 }
 
 pub extern "x86-interrupt" fn bound_range_exceeded_handler(stack_frame: InterruptStackFrame) {
     error!("Caught a bound range exceeded interrupt!");
     println!("{:#?}", stack_frame);
+    unsafe { asm!("hlt;"); };
 }
 
 pub extern "x86-interrupt" fn invalid_opcode_handler(stack_frame: InterruptStackFrame) {
     error!("Caught an invalid opcode interrupt!");
     println!("{:#?}", stack_frame);
+    unsafe { asm!("hlt;"); };
 }
 
 pub extern "x86-interrupt" fn device_not_available_handler(stack_frame: InterruptStackFrame) {
     error!("Caught a device not available interrupt!");
     println!("{:#?}", stack_frame);
+    unsafe { asm!("hlt;"); };
 }
 
 pub extern "x86-interrupt" fn double_fault_handler(stack_frame: InterruptStackFrame, error_code: u64) {
     error!("Caught a double fault! Error code 0x{:X}", error_code);
     println!("{:#?}", stack_frame);
+    unsafe { asm!("hlt;"); };
 }
 
 pub extern "x86-interrupt" fn invalid_tss_handler(stack_frame: InterruptStackFrame, error_code: u64) {
     error!("Caught an invalid tss interrupt! Error code 0x{:X}", error_code);
     println!("{:#?}", stack_frame);
+    unsafe { asm!("hlt;"); };
 }
 
 pub extern "x86-interrupt" fn segment_not_present_handler(stack_frame: InterruptStackFrame, error_code: u64) {
     error!("Caught a segment not present interrupt! Error code 0x{:X}", error_code);
     println!("{:#?}", stack_frame);
+    unsafe { asm!("hlt;"); };
 }
 
 pub extern "x86-interrupt" fn stack_segment_fault_handler(stack_frame: InterruptStackFrame, error_code: u64) {
     error!("Caught a stack segment fault interrupt! Error code 0x{:X}", error_code);
     println!("{:#?}", stack_frame);
+    unsafe { asm!("hlt;"); };
 }
 
 pub extern "x86-interrupt" fn general_protection_fault_handler(stack_frame: InterruptStackFrame, error_code: u64) {
     error!("Caught a general protection fault interrupt! Error code 0x{:X}", error_code);
     println!("{:#?}", stack_frame);
+    unsafe { asm!("hlt;"); };
 }
 
 pub extern "x86-interrupt" fn page_fault_handler(stack_frame: InterruptStackFrame, error_code: u64) {

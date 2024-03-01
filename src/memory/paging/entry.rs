@@ -54,14 +54,13 @@ impl EntryFlags {
         let mut flags = EntryFlags::empty();
 
         if section.flags().contains(ElfSectionHeaderFlags::ALLOCATED) {
-            // section is loaded to memory
             flags |= EntryFlags::PRESENT;
         }
         if section.flags().contains(ElfSectionHeaderFlags::WRITABLE) {
             flags |= EntryFlags::WRITABLE;
         }
         if !section.flags().contains(ElfSectionHeaderFlags::EXECUTABLE) {
-            flags |= EntryFlags::NO_EXECUTE;
+            //flags |= EntryFlags::NO_EXECUTE;
         }
 
         flags

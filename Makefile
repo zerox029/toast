@@ -18,7 +18,7 @@ qemu_flags := -s \
 			  -drive id=disk,file=$(disk_img),if=none \
 			  -device ahci,id=ahci \
 			  -device ide-hd,drive=disk,bus=ahci.0 \
-			  -serial stdio
+			  -serial stdio \
 
 .PHONY: all clean run iso kernel
 

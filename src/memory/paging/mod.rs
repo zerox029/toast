@@ -5,7 +5,7 @@ use crate::memory::{Frame, FrameAllocator, PAGE_SIZE};
 use crate::memory::paging::entry::EntryFlags;
 use crate::memory::paging::temporary_page::TemporaryPage;
 use crate::memory::paging::mapper::Mapper;
-use crate::{print, info, ok};
+use crate::{print, info, ok, serial_println};
 
 pub mod entry;
 pub mod table;
@@ -193,6 +193,9 @@ pub fn remap_kernel<A>(allocator: &mut A, boot_info: &BootInformation) -> Active
             let end_frame = Frame::containing_address(section.end_address() - 1);
             for frame in Frame::range_inclusive(start_frame, end_frame) {
                 mapper.identity_map(frame, EntryFlags::from_elf_section_flags(section), allocator);
+                if EntryFlags::from_elf_section_flags(section).contains(EntryFlags::NO_EXECUTE) {
+                    serial_println!("Added no execute to section starting at {}", section.start_address())
+                }
             }
         }
 

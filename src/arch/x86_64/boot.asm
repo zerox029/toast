@@ -164,12 +164,15 @@ enable_paging:
 
     ret
 
-section .rodata
+section .data   ; i'm not sure if this is correct but having the gdt in rodata means i cant update it later
 gdt64:
     dq 0    ; zero entry
-    dq (1<<43) | (1<<44) | (1<<47) | (1<<53) ; code segment
 .code: equ $ - gdt64
-    dq (1<<43) | (1<<44) | (1<<47) | (1<<53)
+    dq (1<<43) | (1<<44) | (1<<47) | (1<<53) ; kernel code segment
+    dq (1<<41) | (1<<42) | (1<<44) | (1<<47) ; kernel data segment
+    dq (1<<41) | (1<<43) | (1<<44) | (1<<45) | (1<<46) | (1<<47) | (1<<53) ; user code segment
+    dq (1<<41) | (1<<44) | (1<<45) | (1<<46) | (1<<47) | (1<<53) ; user code data
+
 .pointer:
     dw $ - gdt64 - 1
     dq gdt64
