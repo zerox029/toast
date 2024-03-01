@@ -60,7 +60,7 @@ impl EntryFlags {
             flags |= EntryFlags::WRITABLE;
         }
         if !section.flags().contains(ElfSectionHeaderFlags::EXECUTABLE) {
-            //flags |= EntryFlags::NO_EXECUTE;
+            flags |= EntryFlags::NO_EXECUTE;
         }
 
         flags

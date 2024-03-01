@@ -88,8 +88,6 @@ pub struct GlobalDescriptorTable {
 }
 
 pub fn enable_user_mode() {
-    InterruptController::disable_external_interrupts();
-
     let gdtr = sgdt();
     let mut gdt = unsafe { &mut *(gdtr.offset as *mut GlobalDescriptorTable) };
 
@@ -143,33 +141,10 @@ pub fn enable_user_mode() {
         }
     }
 
-/*
+
+    jump_user_mode();
     // Jump to user mode
-    unsafe {
-        asm! {
-            "mov ax, (4 * 8) | 3",
-            "mov ds, ax",
-            "mov es, ax",
-            "mov fs, ax",
-            "mov gs, ax",
 
-            "mov rdi, {}",
-            "mov rsi, rsp",
-            "mov dx, 0x1b",
-            "mov ax, (4 * 8) | 3",
-            "push rax",
-            "push rsi",
-            "push 0x200",
-            "push rdx",
-            "push rdi",
-            "retfq",
-
-            in(reg) test_user_function as usize,
-            options(nostack, preserves_flags),
-        }
-    }*/
-
-    InterruptController::enable_external_interrupts();
 }
 
 #[inline]
@@ -186,6 +161,32 @@ fn sgdt() -> GdtDescriptor {
     gdtr
 }
 
-fn test_user_function() {
-    println!("Welcome to userland");
+fn jump_user_mode() {
+    unsafe {
+        asm! {
+            "mov ax, (4 * 8) | 3",
+            "mov ds, ax",
+            "mov es, ax",
+            "mov fs, ax",
+            "mov gs, ax",
+
+            "xor edx, edx",
+            "mov eax, 0x8",
+            "mov ecx, 0x174", // IA32_SYSENTER_CS
+            "wrmsr",
+
+            "mov edx, 0x116220",
+            "mov ecx, esp",
+            "sysexit",
+        }
+    }
+}
+
+pub fn test_user_function() {
+    unsafe {
+        asm! {
+            "cli"
+        }
+    }
+    //serial_println!("Welcome to userland");
 }
