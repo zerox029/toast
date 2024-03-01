@@ -6,10 +6,10 @@ rust_os := target/$(target)/debug/libtoast.a
 cpu_model := Nehalem-v2
 disk_img := build/toast-disk.img
 
-linker_script := src/arch/$(arch)/linker.ld
-grub_cfg := src/arch/$(arch)/grub.cfg
-assembly_source_files := $(wildcard src/arch/$(arch)/*.asm)
-assembly_object_files := $(patsubst src/arch/$(arch)/%.asm, \
+linker_script := src/arch/$(arch)/boot/linker.ld
+grub_cfg := src/arch/$(arch)/boot/grub.cfg
+assembly_source_files := $(wildcard src/arch/$(arch)/boot/*.asm)
+assembly_object_files := $(patsubst src/arch/$(arch)/boot/%.asm, \
 	build/arch/$(arch)/%.o, $(assembly_source_files))
 
 qemu_flags := -s \

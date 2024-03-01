@@ -1,18 +1,8 @@
-use alloc::alloc::Global;
 use alloc::boxed::Box;
-use core::arch::{asm, global_asm};
+use core::arch::{asm};
 use core::mem::size_of;
-use core::ptr;
 use bitfield::bitfield;
-use lazy_static::lazy_static;
-use spin::Mutex;
-use x86_64::structures::gdt;
-use x86_64::structures::gdt::Descriptor;
-use crate::interrupts::{INTERRUPT_CONTROLLER, InterruptController};
-use crate::memory::{MemoryManager, PAGE_SIZE};
-use crate::memory::paging::entry::EntryFlags;
-use crate::{println, print, serial_println};
-use crate::memory::paging::Page;
+use crate::{println, print};
 
 bitfield! {
     #[derive(Default)]
@@ -68,17 +58,6 @@ pub struct GdtDescriptor {
     offset: usize,
 }
 
-impl GdtDescriptor {
-    pub fn size(&self) -> u16 {
-        self.size
-    }
-
-    pub fn offset(&self) -> usize {
-        self.offset
-    }
-}
-
-#[derive(Default)]
 #[repr(C)]
 pub struct GlobalDescriptorTable {
     null_segment_descriptor: SegmentDescriptor,
@@ -89,83 +68,64 @@ pub struct GlobalDescriptorTable {
     tss_descriptor: TssDescriptor,
 }
 
-pub fn enable_user_mode() {
-    let gdtr = sgdt();
-    let mut gdt = unsafe { &mut *(gdtr.offset as *mut GlobalDescriptorTable) };
+impl GlobalDescriptorTable {
+    pub fn init() {
+        let gdtr = sgdt();
+        let mut gdt = unsafe { &mut *(gdtr.offset as *mut GlobalDescriptorTable) };
 
-    gdt.kernel_code.set_access_byte(0b10011000); // E S P 43 44 47
-    gdt.kernel_code.set_flags(0b0010); // L
+        // This should already be set by the boot script, but I keep it as a reference
+        gdt.kernel_code.set_access_byte(0b10011000); // E S P 43 44 47
+        gdt.kernel_code.set_flags(0b0010); // L
 
-    gdt.kernel_data.set_access_byte(0b10010110); // P S DW RW  41 42 44  47
-    gdt.kernel_data.set_flags(0);
+        gdt.kernel_data.set_access_byte(0b10010110); // P S DW RW  41 42 44  47
+        gdt.kernel_data.set_flags(0);
 
-    gdt.user_code.set_access_byte(0b11111010); // P DPL S E RW 41 43 44 45 46 47
-    gdt.user_code.set_flags(0b0010); // L
+        gdt.user_code.set_access_byte(0b11111010); // P DPL S E RW 41 43 44 45 46 47
+        gdt.user_code.set_flags(0b0010); // L
 
-    gdt.user_data.set_access_byte(0b11110010); // P DPL S RW 41 44 45 46 47
-    gdt.user_data.set_flags(0b0010); // L
+        gdt.user_data.set_access_byte(0b11110010); // P DPL S RW 41 44 45 46 47
+        gdt.user_data.set_flags(0b0010); // L
 
-    let mut mem = MemoryManager::instance().lock();
+        Self::setup_tss(gdt);
+        Self::load_gdt(gdtr.offset);
+    }
 
-    let mut tss = Box::into_pin(Box::new(Tss::default()));
-    tss.rsp0 = mem.pmm_alloc(PAGE_SIZE * 4, EntryFlags::PRESENT | EntryFlags::WRITABLE | EntryFlags::USER_ACCESSIBLE).expect("could not allocate") as u64;
-    tss.rsp1 = mem.pmm_alloc(PAGE_SIZE * 4, EntryFlags::PRESENT | EntryFlags::WRITABLE | EntryFlags::USER_ACCESSIBLE).expect("could not allocate") as u64;
-    tss.rsp2 = mem.pmm_alloc(PAGE_SIZE * 4, EntryFlags::PRESENT | EntryFlags::WRITABLE | EntryFlags::USER_ACCESSIBLE).expect("could not allocate") as u64;
+    fn setup_tss(gdt: &mut GlobalDescriptorTable) {
+        // Question: Should this be updated everytime we jump in user mode?
+        let rsp = crate::arch::x86_64::registers::rsp();
 
-    let tss_address = &*tss as *const Tss as u128;
-    gdt.tss_descriptor.set_limit_low(104);
-    gdt.tss_descriptor.set_base_low(tss_address & 0xFFFF);
-    gdt.tss_descriptor.set_base_mid(tss_address >> 16 & 0xFF);
-    gdt.tss_descriptor.set_access_byte(0b10001001);
-    gdt.tss_descriptor.set_flags(0b1000);
-    gdt.tss_descriptor.set_base_high(tss_address >> 24 & 0xFF);
-    gdt.tss_descriptor.set_base_high32(tss_address >> 32 & 0xFFFFFFFF);
+        let mut tss = Box::into_pin(Box::new(Tss::default()));
+        tss.rsp0 = rsp as u64;
+        tss.rsp1 = rsp as u64;
+        tss.rsp2 = rsp as u64;
 
-    // Update the GDT pointer
-    let updated_gdtr = GdtDescriptor {
-        size: size_of::<GlobalDescriptorTable>() as u16 - 1,
-        offset: gdtr.offset,
-    };
+        let tss_address = &*tss as *const Tss as u128;
+        gdt.tss_descriptor.set_limit_low(size_of::<Tss>() as u128); // maybe this should be size - 1
+        gdt.tss_descriptor.set_base_low(tss_address & 0xFFFF);
+        gdt.tss_descriptor.set_base_mid(tss_address >> 16 & 0xFF);
+        gdt.tss_descriptor.set_access_byte(0b10001001);
+        gdt.tss_descriptor.set_flags(0b1000);
+        gdt.tss_descriptor.set_base_high(tss_address >> 24 & 0xFF);
+        gdt.tss_descriptor.set_base_high32(tss_address >> 32 & 0xFFFFFFFF);
+    }
 
-    unsafe {
-        asm! {
-            "lgdt [{}]",
-            in(reg) &updated_gdtr
+    fn load_gdt(offset: usize) {
+        // Update the GDT pointer
+        let updated_gdtr = GdtDescriptor {
+            size: size_of::<GlobalDescriptorTable>() as u16 - 1,
+            offset,
+        };
+
+        unsafe {
+            // Load GDT
+            asm!("lgdt [{}]", in(reg) &updated_gdtr);
+
+            // Flush TSS
+            asm!("mov ax, 5 * 8", "ltr ax");
         }
     }
-
-    // Flush TSS
-    unsafe {
-        asm! {
-            "mov ax, 5 * 8",
-            "ltr ax",
-            options(nostack, preserves_flags),
-        }
-    }
-
-    serial_println!("{:X}", test_user_function as usize);
-    unsafe {
-        asm! (
-        "mov ax, (4 * 8) | 3
-            mov ds, ax
-            mov es, ax
-            mov fs, ax
-            mov gs, ax
-
-            mov eax, esp
-            push (4 * 8) | 3
-            push rax
-            pushf
-            push (3 * 8) | 3
-            push 0x116E80
-            iretq",
-        );
-    }
-
-    //jump_user_mode();
-    // Jump to user mode
-
 }
+
 
 #[inline]
 fn sgdt() -> GdtDescriptor {
@@ -181,33 +141,32 @@ fn sgdt() -> GdtDescriptor {
     gdtr
 }
 
-fn jump_user_mode() {
-
-
+pub fn jump_to_user_mode() {
     unsafe {
-        /*
         asm! {
-            "mov ax, (4 * 8) | 3",
-            "mov ds, ax",
-            "mov es, ax",
-            "mov fs, ax",
-            "mov gs, ax",
+            "mov ax, (4 * 8) | 3
+            mov ds, ax
+            mov es, ax
+            mov fs, ax
+            mov gs, ax
 
-            "xor edx, edx",
-            "mov eax, 0x1",
-            "mov ecx, 0x174", // IA32_SYSENTER_CS
-            "wrmsr",
+            mov eax, esp
+            push (4 * 8) | 3
+            push rax
+            pushf
+            push (3 * 8) | 3"
+        }
 
-            "mov edx, 0x116220",
-            "mov ecx, esp",
-            "sysexit",
-        }*/
-
-
+        asm! {
+            "push {}
+            iretq",
+            in(reg) test_user_function as usize,
+        }
     }
 }
 
 extern "C" fn test_user_function() {
     println!("Welcome to user land!!");
+
     loop {}
 }

@@ -50,7 +50,7 @@ pub struct InterruptController {
 }
 
 impl InterruptController {
-    pub fn init_interrupts() {
+    pub fn init() {
         Self::init_idt();
         Self::map_handlers();
         Self::remap_pic(0x20, 0x28);
