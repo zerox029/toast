@@ -80,7 +80,7 @@ impl Mapper {
         let p1 = p2.next_table_create(page.p2_index(), allocator);
 
         assert!(p1[page.p1_index()].is_unused());
-        p1[page.p1_index()].set(frame, flags | EntryFlags::PRESENT);
+        p1[page.p1_index()].set(frame, flags | EntryFlags::PRESENT | EntryFlags::USER_ACCESSIBLE);
     }
 
     /// Maps the page to some free frame with the provided flags.

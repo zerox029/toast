@@ -9,6 +9,7 @@ use crate::{println, print};
 
 mod interrupt_descriptor_table;
 mod interrupt_service_routines;
+pub mod global_descriptor_table;
 
 const MASTER_PIC_COMMAND_ADDRESS: u16 = 0x20;
 const MASTER_PIC_DATA_ADDRESS: u16 = 0x21;

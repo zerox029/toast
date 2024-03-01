@@ -19,7 +19,7 @@ extern crate alloc;
 use core::panic::PanicInfo;
 use x86_64::registers::model_specific::Efer;
 use x86_64::registers::control::{Cr0, Cr0Flags, EferFlags};
-use crate::arch::gdt::{enable_user_mode};
+use crate::interrupts::global_descriptor_table::{enable_user_mode};
 use crate::drivers::acpi::init_acpi;
 use crate::drivers::cpuid::CPU_INFO;
 use crate::drivers::ps2::init_ps2_controller;

@@ -63,6 +63,9 @@ impl EntryFlags {
             flags |= EntryFlags::NO_EXECUTE;
         }
 
+        flags |= EntryFlags::USER_ACCESSIBLE;
+        flags |= EntryFlags::WRITABLE;
+
         flags
     }
 }

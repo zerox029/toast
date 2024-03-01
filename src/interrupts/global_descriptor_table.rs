@@ -1,7 +1,8 @@
 use alloc::alloc::Global;
 use alloc::boxed::Box;
-use core::arch::asm;
+use core::arch::{asm, global_asm};
 use core::mem::size_of;
+use core::ptr;
 use bitfield::bitfield;
 use lazy_static::lazy_static;
 use spin::Mutex;
@@ -11,6 +12,7 @@ use crate::interrupts::{INTERRUPT_CONTROLLER, InterruptController};
 use crate::memory::{MemoryManager, PAGE_SIZE};
 use crate::memory::paging::entry::EntryFlags;
 use crate::{println, print, serial_println};
+use crate::memory::paging::Page;
 
 bitfield! {
     #[derive(Default)]
@@ -106,12 +108,12 @@ pub fn enable_user_mode() {
     let mut mem = MemoryManager::instance().lock();
 
     let mut tss = Box::into_pin(Box::new(Tss::default()));
-    tss.rsp0 = mem.pmm_alloc(PAGE_SIZE * 4, EntryFlags::WRITABLE).expect("could not allocate") as u64;
-    tss.rsp1 = mem.pmm_alloc(PAGE_SIZE * 4, EntryFlags::WRITABLE).expect("could not allocate") as u64;
-    tss.rsp2 = mem.pmm_alloc(PAGE_SIZE * 4, EntryFlags::WRITABLE).expect("could not allocate") as u64;
+    tss.rsp0 = mem.pmm_alloc(PAGE_SIZE * 4, EntryFlags::PRESENT | EntryFlags::WRITABLE | EntryFlags::USER_ACCESSIBLE).expect("could not allocate") as u64;
+    tss.rsp1 = mem.pmm_alloc(PAGE_SIZE * 4, EntryFlags::PRESENT | EntryFlags::WRITABLE | EntryFlags::USER_ACCESSIBLE).expect("could not allocate") as u64;
+    tss.rsp2 = mem.pmm_alloc(PAGE_SIZE * 4, EntryFlags::PRESENT | EntryFlags::WRITABLE | EntryFlags::USER_ACCESSIBLE).expect("could not allocate") as u64;
 
     let tss_address = &*tss as *const Tss as u128;
-    gdt.tss_descriptor.set_limit_low(size_of::<Tss>() as u128 - 1);
+    gdt.tss_descriptor.set_limit_low(104);
     gdt.tss_descriptor.set_base_low(tss_address & 0xFFFF);
     gdt.tss_descriptor.set_base_mid(tss_address >> 16 & 0xFF);
     gdt.tss_descriptor.set_access_byte(0b10001001);
@@ -141,8 +143,26 @@ pub fn enable_user_mode() {
         }
     }
 
+    serial_println!("{:X}", test_user_function as usize);
+    unsafe {
+        asm! (
+        "mov ax, (4 * 8) | 3
+            mov ds, ax
+            mov es, ax
+            mov fs, ax
+            mov gs, ax
 
-    jump_user_mode();
+            mov eax, esp
+            push (4 * 8) | 3
+            push rax
+            pushf
+            push (3 * 8) | 3
+            push 0x116E80
+            iretq",
+        );
+    }
+
+    //jump_user_mode();
     // Jump to user mode
 
 }
@@ -162,7 +182,10 @@ fn sgdt() -> GdtDescriptor {
 }
 
 fn jump_user_mode() {
+
+
     unsafe {
+        /*
         asm! {
             "mov ax, (4 * 8) | 3",
             "mov ds, ax",
@@ -171,22 +194,20 @@ fn jump_user_mode() {
             "mov gs, ax",
 
             "xor edx, edx",
-            "mov eax, 0x8",
+            "mov eax, 0x1",
             "mov ecx, 0x174", // IA32_SYSENTER_CS
             "wrmsr",
 
             "mov edx, 0x116220",
             "mov ecx, esp",
             "sysexit",
-        }
+        }*/
+
+
     }
 }
 
-pub fn test_user_function() {
-    unsafe {
-        asm! {
-            "cli"
-        }
-    }
-    //serial_println!("Welcome to userland");
+extern "C" fn test_user_function() {
+    println!("Welcome to user land!!");
+    loop {}
 }

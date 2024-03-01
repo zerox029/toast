@@ -38,7 +38,7 @@ impl Page {
         }
     }
 
-    fn start_address(&self) -> usize {
+    pub fn start_address(&self) -> usize {
         self.number * PAGE_SIZE
     }
 
@@ -183,6 +183,7 @@ pub fn remap_kernel<A>(allocator: &mut A, boot_info: &BootInformation) -> Active
 
         // Identity mapping the kernel sections
         for section in elf_sections.section_headers() {
+
             if !section.is_allocated() {
                 continue;
             }
@@ -192,22 +193,22 @@ pub fn remap_kernel<A>(allocator: &mut A, boot_info: &BootInformation) -> Active
             let start_frame = Frame::containing_address(section.start_address());
             let end_frame = Frame::containing_address(section.end_address() - 1);
             for frame in Frame::range_inclusive(start_frame, end_frame) {
-                mapper.identity_map(frame, EntryFlags::from_elf_section_flags(section), allocator);
-                if EntryFlags::from_elf_section_flags(section).contains(EntryFlags::NO_EXECUTE) {
-                    serial_println!("Added no execute to section starting at {}", section.start_address())
+                if frame.start_address() == 0x116000 {
+                    serial_println!("Section at {:X} ending at {:X} with flags {:b}", section.start_address(), section.end_address(), EntryFlags::from_elf_section_flags(section));
                 }
+                mapper.identity_map(frame, EntryFlags::from_elf_section_flags(section), allocator);
             }
         }
 
         // Identity map the VGA buffer frame
         let vga_buffer_frame = Frame::containing_address(0xb8000);
-        mapper.identity_map(vga_buffer_frame, EntryFlags::WRITABLE, allocator);
+        mapper.identity_map(vga_buffer_frame, EntryFlags::WRITABLE | EntryFlags::USER_ACCESSIBLE, allocator);
 
         // Identity map the multiboot info
         let multiboot_start = Frame::containing_address(boot_info.start_address());
         let multiboot_end = Frame::containing_address(boot_info.end_address() - 1);
         for frame in Frame::range_inclusive(multiboot_start, multiboot_end) {
-            mapper.identity_map(frame, EntryFlags::PRESENT, allocator);
+            mapper.identity_map(frame, EntryFlags::PRESENT | EntryFlags::USER_ACCESSIBLE, allocator);
         }
     });
 
