@@ -1,8 +1,10 @@
+use core::arch::asm;
 use core::ptr::Unique;
 use crate::memory::{Frame, FrameAllocator, PAGE_SIZE};
 use crate::memory::paging::table::{Level4, P4, Table};
 use crate::memory::paging::{ENTRY_COUNT, Page, PhysicalAddress, VirtualAddress};
 use crate::memory::paging::entry::EntryFlags;
+use crate::serial_println;
 
 pub struct Mapper {
     p4: Unique<Table<Level4>>,
@@ -126,9 +128,9 @@ impl Mapper {
         let frame = p1[page.p1_index()].pointed_frame();
         p1[page.p1_index()].set_unused();
 
-        use x86_64::instructions::tlb;
-        use x86_64::VirtAddr;
-        tlb::flush(VirtAddr::new(page.start_address() as u64));
+        unsafe {
+            asm!("invlpg [{}]", in(reg) page.start_address());
+        }
 
         frame
     }

@@ -6,6 +6,7 @@ use crate::memory::paging::entry::EntryFlags;
 use crate::memory::paging::temporary_page::TemporaryPage;
 use crate::memory::paging::mapper::Mapper;
 use crate::{print, info, ok, serial_println};
+use crate::vga_buffer::VGA_BUFFER_ADDRESS;
 
 pub mod entry;
 pub mod table;
@@ -168,6 +169,7 @@ impl InactivePageTable {
     }
 }
 
+/// Maps the kernel structures in the higher half of virtual memory
 pub fn remap_kernel<A>(allocator: &mut A, boot_info: &BootInformation) -> ActivePageTable where A: FrameAllocator {
     info!("mm: identity mapping kernel...");
     let mut temporary_page = TemporaryPage::new(Page { number: 0xcafebabe }, allocator);
@@ -181,9 +183,8 @@ pub fn remap_kernel<A>(allocator: &mut A, boot_info: &BootInformation) -> Active
     active_table.with(&mut new_table, &mut temporary_page, |mapper| {
        let elf_sections = boot_info.elf_symbols().expect("Memory map required");
 
-        // Identity mapping the kernel sections
+        // Remapping the kernel sections
         for section in elf_sections.section_headers() {
-
             if !section.is_allocated() {
                 continue;
             }
@@ -193,22 +194,19 @@ pub fn remap_kernel<A>(allocator: &mut A, boot_info: &BootInformation) -> Active
             let start_frame = Frame::containing_address(section.start_address());
             let end_frame = Frame::containing_address(section.end_address() - 1);
             for frame in Frame::range_inclusive(start_frame, end_frame) {
-                if frame.start_address() == 0x116000 {
-                    serial_println!("Section at {:X} ending at {:X} with flags {:b}", section.start_address(), section.end_address(), EntryFlags::from_elf_section_flags(section));
-                }
                 mapper.identity_map(frame, EntryFlags::from_elf_section_flags(section), allocator);
             }
         }
 
-        // Identity map the VGA buffer frame
-        let vga_buffer_frame = Frame::containing_address(0xb8000);
+        // Remapping the VGA buffer frame
+        let vga_buffer_frame = Frame::containing_address(VGA_BUFFER_ADDRESS);
         mapper.identity_map(vga_buffer_frame, EntryFlags::WRITABLE | EntryFlags::USER_ACCESSIBLE, allocator);
 
-        // Identity map the multiboot info
+        // Remapping the multiboot info
         let multiboot_start = Frame::containing_address(boot_info.start_address());
         let multiboot_end = Frame::containing_address(boot_info.end_address() - 1);
         for frame in Frame::range_inclusive(multiboot_start, multiboot_end) {
-            mapper.identity_map(frame, EntryFlags::PRESENT | EntryFlags::USER_ACCESSIBLE, allocator);
+            mapper.identity_map(frame, EntryFlags::PRESENT, allocator);
         }
     });
 
@@ -217,6 +215,7 @@ pub fn remap_kernel<A>(allocator: &mut A, boot_info: &BootInformation) -> Active
     let old_p4_page = Page::containing_address(old_table.p4_frame.start_address());
     active_table.unmap(old_p4_page, allocator);
 
+    // TODO: Review this with regards to the higher half kernel
     ok!("mm: set up guard page at {:#X}", old_p4_page.start_address());
 
     active_table

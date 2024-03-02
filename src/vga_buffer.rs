@@ -3,6 +3,7 @@ use core::ptr::Unique;
 use spin::Mutex;
 use volatile::Volatile;
 
+pub const VGA_BUFFER_ADDRESS: usize = 0xb8000;
 const BUFFER_HEIGHT: usize = 25;
 const BUFFER_WIDTH: usize = 80;
 

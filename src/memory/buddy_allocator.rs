@@ -3,7 +3,7 @@ use alloc::vec::Vec;
 use core::cmp::min;
 use crate::arch::multiboot2::structures::{MemoryMapEntry, MemoryMapIter};
 use crate::memory::{Frame, FrameAllocator, PAGE_SIZE};
-use crate::{serial_println};
+use crate::{println, print, serial_println};
 use crate::memory::buddy_allocator::BlockType::{LeftBuddy, RightBuddy, TopLevel};
 
 const MAX_ORDER: usize = 10;

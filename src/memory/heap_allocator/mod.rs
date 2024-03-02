@@ -53,7 +53,7 @@ pub fn init_heap<A>(mapper: &mut Mapper, frame_allocator: &mut A) where A: Frame
     }
 
     unsafe {
-        ALLOCATOR.lock().init(HEAP_START, HEAP_START);
+        ALLOCATOR.lock().init(HEAP_START, HEAP_SIZE);
     }
 
     ok!("mm: heap starts at 0x{:X}", HEAP_START);

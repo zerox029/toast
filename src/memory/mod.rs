@@ -4,7 +4,7 @@ use spin::Mutex;
 use crate::arch::multiboot2::BootInformation;
 use crate::memory::linear_frame_allocator::LinearFrameAllocator;
 use crate::memory::paging::{ActivePageTable, Page, PhysicalAddress};
-use crate::{print, info, serial_println};
+use crate::{print, info, serial_println, println};
 use crate::memory::buddy_allocator::BuddyAllocator;
 use crate::memory::paging::entry::EntryFlags;
 
