@@ -1,0 +1,40 @@
+[package]
+name = "toast"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+limine = "0.2.0"
+rlibc = "1.0"
+volatile = "0.2.6"
+spin = "0.9.8"
+x86_64 = "0.14.11"
+uart_16550 = "0.3.0"
+bitflags = "2.4.2"
+linked_list_allocator = "0.9.0"
+cortex-m = "0.7.7"
+volatile-register = "0.2.2"
+bitfield = "0.14.0"
+embedded-graphics = "0.8.1"
+
+[dependencies.lazy_static]
+version = "1.0"
+features = ["spin_no_std"]
+
+[dependencies.downcast-rs]
+version = "1.2.0"
+default-features = false
+
+[dependencies.crossbeam-queue]
+version = "0.2.1"
+default-features = false
+features = ["alloc"]
+
+[dependencies.conquer-once]
+version = "0.2.0"
+default-features = false
+
+[dependencies.futures-util]
+version = "0.3.4"
+default-features = false
+features = ["alloc"]
