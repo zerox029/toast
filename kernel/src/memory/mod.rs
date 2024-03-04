@@ -1,15 +1,12 @@
-use core::any::Any;
 use core::ops::DerefMut;
 use conquer_once::spin::OnceCell;
 use limine::memory_map::EntryType;
 use limine::request::KernelAddressRequest;
-use limine::response::{KernelAddressResponse, MemoryMapResponse};
+use limine::response::{MemoryMapResponse};
 use spin::Mutex;
-use crate::arch::multiboot2::BootInformation;
 use crate::memory::linear_frame_allocator::LinearFrameAllocator;
 use crate::memory::paging::{ActivePageTable, Page, PhysicalAddress};
-use crate::{vga_print, info, serial_println, vga_println, serial_print};
-use crate::arch::multiboot2::structures::MemoryMap;
+use crate::{info, serial_println, serial_print};
 use crate::memory::buddy_allocator::BuddyAllocator;
 use crate::memory::paging::entry::EntryFlags;
 
@@ -94,13 +91,8 @@ impl MemoryManager {
         let mut active_page_table = unsafe { ActivePageTable::new() };
         init_heap(&mut active_page_table, &mut linear_allocator);
 
-        /*
         // Switch to the buddy allocator
-        let mut buddy_allocator = BuddyAllocator::new(kernel_start, kernel_end,
-                                                  multiboot_start, multiboot_end,
-                                                  memory_map.entries());
-
-
+        let mut buddy_allocator = BuddyAllocator::new(memory_map);
         buddy_allocator.set_allocated_frames(linear_allocator.allocated_frames());
 
         let memory_manager = Self {
@@ -108,7 +100,7 @@ impl MemoryManager {
             active_page_table,
         };
 
-        INSTANCE.try_init_once(|| Mutex::new(memory_manager)).expect("mm: cannot initialize memory manager more than once");*/
+        INSTANCE.try_init_once(|| Mutex::new(memory_manager)).expect("mm: cannot initialize memory manager more than once");
     }
 
     pub fn instance() -> &'static Mutex<MemoryManager> {

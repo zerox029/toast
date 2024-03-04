@@ -1,6 +1,8 @@
 use alloc::collections::LinkedList;
 use alloc::vec::Vec;
 use core::cmp::min;
+use limine::memory_map::{Entry, EntryType};
+use limine::response::MemoryMapResponse;
 use crate::arch::multiboot2::structures::{MemoryMapEntry, MemoryMapIter};
 use crate::memory::{Frame, FrameAllocator, PAGE_SIZE};
 use crate::{vga_println, vga_print, serial_println};
@@ -35,9 +37,7 @@ impl MemoryBlock {
 }
 
 impl BuddyAllocator {
-    pub fn new(kernel_start: usize, kernel_end: usize,
-               multiboot_start: usize, multiboot_end: usize,
-               memory_map: MemoryMapIter) -> Self {
+    pub fn new(memory_map: &'static MemoryMapResponse) -> Self {
         let mut memory_blocks: MemoryBlocks = [
             LinkedList::new(),
             LinkedList::new(),
@@ -53,8 +53,8 @@ impl BuddyAllocator {
         ];
 
         // Fill the memory block lists
-        for area in memory_map {
-            Self::map_area(area, &mut memory_blocks, kernel_start, kernel_end, multiboot_start, multiboot_end);
+        for area in memory_map.entries().iter().filter(|entry| entry.entry_type == EntryType::USABLE) {
+            Self::map_area(area, &mut memory_blocks);
         }
 
         Self {
@@ -197,58 +197,35 @@ impl BuddyAllocator {
         Some(current_block_clone.starting_address)
     }
 
-    fn map_area(area: &MemoryMapEntry, memory_blocks: &mut MemoryBlocks,
-                kernel_start: usize, kernel_end: usize, multiboot_start: usize, multiboot_end: usize,) {
-        let mut start_address = area.base_addr;
-        let mut end_address = start_address as usize + PAGE_SIZE * 2usize.pow(MAX_ORDER as u32);
+    fn map_area(area: &Entry, memory_blocks: &mut MemoryBlocks) {
+        let mut block_start_address = area.base;
+        let mut block_end_address = block_start_address as usize + PAGE_SIZE * 2usize.pow(MAX_ORDER as u32);
 
-        while start_address < area.base_addr + area.size {
+        while block_start_address < area.base + area.length {
             let mut current_order = MAX_ORDER as u32;
 
-            // If block starts in restricted area, move to the end of that area
-            if start_address as usize >= kernel_start && start_address as usize <= kernel_end {
-                // Offset so that allocation is page aligned
-                let offset = PAGE_SIZE - kernel_end % PAGE_SIZE;
-
-                start_address = (kernel_end + offset) as u64;
-                end_address = start_address as usize + PAGE_SIZE * 2usize.pow(MAX_ORDER as u32);
-
-                continue;
-            }
-            else if start_address as usize >= multiboot_start && start_address as usize <= multiboot_end {
-                // Offset so that allocation is page aligned
-                let offset = PAGE_SIZE - multiboot_end % PAGE_SIZE;
-
-                start_address = (multiboot_end + offset) as u64;
-                end_address = start_address as usize + PAGE_SIZE * 2usize.pow(MAX_ORDER as u32);
-
-                continue;
-            }
-
-
             // Find the largest block that fits
-            while end_address > (area.base_addr + area.size) as usize
-                || Self::block_is_in_forbidden_area(start_address as usize, end_address, kernel_start, kernel_end, multiboot_start, multiboot_end) {
+            while block_end_address > (area.base + area.length) as usize {
                 // If no block order fits, no more blocks can be added for this area
                 if current_order == 0 {
                     return;
                 }
 
                 current_order -= 1;
-                end_address = start_address as usize + PAGE_SIZE * 2usize.pow(current_order);
+                block_end_address = block_start_address as usize + PAGE_SIZE * 2usize.pow(current_order);
             }
 
             // Add the block to its corresponding list
             memory_blocks[current_order as usize].push_back(MemoryBlock {
                 is_allocated: false,
-                starting_address: start_address as usize,
+                starting_address: block_start_address as usize,
                 size_class: current_order as usize,
                 block_type: TopLevel
             });
 
             // Move on to the next block
-            start_address += (PAGE_SIZE * 2usize.pow(current_order)) as u64;
-            end_address = start_address as usize + PAGE_SIZE * 2usize.pow(MAX_ORDER as u32);
+            block_start_address += (PAGE_SIZE * 2usize.pow(current_order)) as u64;
+            block_end_address = block_start_address as usize + PAGE_SIZE * 2usize.pow(MAX_ORDER as u32);
         }
     }
 
@@ -299,19 +276,6 @@ impl BuddyAllocator {
         }
 
         Some(current_block_clone.starting_address)
-    }
-
-    fn block_is_in_forbidden_area(start: usize, end: usize, kernel_start: usize, kernel_end: usize, multiboot_start: usize, multiboot_end: usize) -> bool {
-        Self::block_start_is_in_forbidden_area(start, kernel_start, kernel_end, multiboot_start, multiboot_end)
-        || Self::block_end_is_in_forbidden_area(end, kernel_start, kernel_end, multiboot_start, multiboot_end)
-    }
-
-    fn block_start_is_in_forbidden_area(start: usize, kernel_start: usize, kernel_end: usize, multiboot_start: usize, multiboot_end: usize) -> bool {
-        (start >= kernel_start && start <= kernel_end) || (start >= multiboot_start && start <= multiboot_end)
-    }
-
-    fn block_end_is_in_forbidden_area(end: usize, kernel_start: usize, kernel_end: usize, multiboot_start: usize, multiboot_end: usize) -> bool {
-        (end >= kernel_start && end <= kernel_end) || (end >= multiboot_start && end <= multiboot_end)
     }
 }
 
