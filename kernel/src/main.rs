@@ -29,13 +29,15 @@ use crate::drivers::ps2::init_ps2_controller;
 use crate::drivers::ps2::keyboard::PS2Keyboard;
 use crate::drivers::ps2::PS2DeviceType;
 use crate::fs::ext2::mount_filesystem;
+use crate::graphics::framebuffer::Writer;
 use crate::interrupts::{INTERRUPT_CONTROLLER, InterruptController};
 use crate::memory::MemoryManager;
 use crate::task::keyboard::print_key_inputs;
 use crate::task::executor::Executor;
 use crate::task::Task;
 
-mod vga_buffer;
+#[macro_use]
+mod graphics;
 mod arch;
 mod memory;
 mod interrupts;
@@ -44,7 +46,6 @@ mod drivers;
 mod task;
 mod fs;
 mod serial;
-mod framebuffer;
 
 pub const KERNEL_START_VMA_ADDRESS: usize = 0xFFFFFFFF80000000;
 
@@ -62,18 +63,18 @@ pub static HHDM_REQUEST: HhdmRequest = HhdmRequest::new();
 pub unsafe extern fn _start() {
     assert!(BASE_REVISION.is_supported());
 
-    serial_println!("High memory starts at 0x{:X}", *HHDM_OFFSET);
-    //print_memory_map();
-
     MemoryManager::init(MEMORY_MAP_REQUEST.get_response().expect("could not retrieve the kernel address"));
+    Writer::init();
+
+
+    println!("test");
+    println!("ok");
 
     hcf();
     //init(multiboot_information_address);
 }
 
 fn init(multiboot_information_address: usize) {
-    vga_buffer::clear_screen();
-
     info!("Toast version v0.0.1-x86_64");
     unsafe { CPU_INFO.lock().print_brand(); }
 

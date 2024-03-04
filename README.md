@@ -2,6 +2,7 @@
 A small hobby operating system written in Rust
 
 ## Current state
+- Limine bootloader and boot protocol
 - Memory Allocation
 - Async/Await
 - Keyboard

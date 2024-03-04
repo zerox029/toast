@@ -112,7 +112,6 @@ impl Writer {
     }
 
     fn new_line(&mut self) {
-        /*
         for row in 1..BUFFER_HEIGHT {
             for col in 0..BUFFER_WIDTH {
                 let buffer = self.buffer();
@@ -121,7 +120,7 @@ impl Writer {
             }
         }
         self.clear_row(BUFFER_HEIGHT-1);
-        self.column_position = 0;*/
+        self.column_position = 0;
     }
 
     fn clear_row(&mut self, row: usize) {
@@ -161,7 +160,7 @@ impl fmt::Write for Writer {
 #[macro_export]
 macro_rules! vga_print {
     ($($arg:tt)*) => ({
-        $crate::vga_buffer::print(format_args!($($arg)*));
+        $crate::graphics::vga_buffer::print(format_args!($($arg)*));
     });
 }
 
@@ -174,11 +173,11 @@ macro_rules! vga_println {
 #[macro_export]
 macro_rules! info {
     ($fmt:expr) => ({
-        $crate::vga_buffer::print_header($crate::vga_buffer::MessageType::Info);
+        $crate::graphics::vga_buffer::print_header($crate::graphics::vga_buffer::MessageType::Info);
         vga_print!(concat!($fmt, "\n"));
     });
     ($fmt:expr, $($arg:tt)*) => ({
-        $crate::vga_buffer::print_header($crate::vga_buffer::MessageType::Info);
+        $crate::graphics::vga_buffer::print_header($crate::graphics::vga_buffer::MessageType::Info);
         vga_print!(concat!($fmt, "\n"), $($arg)*);
     });
 }
@@ -186,11 +185,11 @@ macro_rules! info {
 #[macro_export]
 macro_rules! warn {
     ($fmt:expr) => ({
-        $crate::vga_buffer::print_header($crate::vga_buffer::MessageType::Warning);
+        $crate::graphics::vga_buffer::print_header($crate::graphics::vga_buffer::MessageType::Warning);
         vga_print!(concat!($fmt, "\n"));
     });
     ($fmt:expr, $($arg:tt)*) => ({
-        $crate::vga_buffer::print_header($crate::vga_buffer::MessageType::Warning);
+        $crate::graphics::vga_buffer::print_header($crate::graphics::vga_buffer::MessageType::Warning);
         vga_print!(concat!($fmt, "\n"), $($arg)*);
     });
 }
@@ -198,11 +197,11 @@ macro_rules! warn {
 #[macro_export]
 macro_rules! error {
     ($fmt:expr) => ({
-        $crate::vga_buffer::print_header($crate::vga_buffer::MessageType::Error);
+        $crate::graphics::vga_buffer::print_header($crate::graphics::vga_buffer::MessageType::Error);
         vga_print!(concat!($fmt, "\n"));
     });
     ($fmt:expr, $($arg:tt)*) => ({
-        $crate::vga_buffer::print_header($crate::vga_buffer::MessageType::Error);
+        $crate::graphics::vga_buffer::print_header($crate::graphics::vga_buffer::MessageType::Error);
         vga_print!(concat!($fmt, "\n"), $($arg)*);
     });
 }
@@ -210,11 +209,11 @@ macro_rules! error {
 #[macro_export]
 macro_rules! ok {
     ($fmt:expr) => ({
-        $crate::vga_buffer::print_header($crate::vga_buffer::MessageType::Ok);
+        $crate::graphics::vga_buffer::print_header($crate::graphics::vga_buffer::MessageType::Ok);
         vga_print!(concat!($fmt, "\n"));
     });
     ($fmt:expr, $($arg:tt)*) => ({
-        $crate::vga_buffer::print_header($crate::vga_buffer::MessageType::Ok);
+        $crate::graphics::vga_buffer::print_header($crate::graphics::vga_buffer::MessageType::Ok);
         vga_print!(concat!($fmt, "\n"), $($arg)*);
     });
 }

@@ -2,7 +2,7 @@
 override MAKEFLAGS += -rR
 
 RUST_TARGET := x86_64-unknown-none
-BUILD_NAME := limine-toast
+BUILD_NAME := toast
 
 # Default target.
 .PHONY: all

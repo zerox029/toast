@@ -43,7 +43,7 @@ unsafe impl GlobalAlloc for Locked<SlabAllocator> {
         let mut allocator = self.lock();
 
         allocator.allocated_bytes += layout.size();
-        // serial_println!("Allocating {} bytes... {} bytes currently allocated", layout.size(), allocator.allocated_bytes);
+        //serial_println!("Allocating {} bytes... {} bytes currently allocated", layout.size(), allocator.allocated_bytes);
 
         match list_index(&layout) {
             Some(index) => {

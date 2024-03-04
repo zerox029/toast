@@ -11,7 +11,7 @@ use crate::memory::paging::entry::EntryFlags;
 use crate::{vga_print, ok, serial_println, HHDM_OFFSET};
 
 pub const HEAP_START: usize = 0x4444_4444_0000;
-pub const HEAP_SIZE: usize = 100 * 1024; // 100 KiB
+pub const HEAP_SIZE: usize = 1000 * 1024; // 1 MiB
 
 #[global_allocator]
 static ALLOCATOR: Locked<SlabAllocator> = Locked::new(SlabAllocator::new());
@@ -47,8 +47,11 @@ pub fn init_heap<A>(page_table: &mut ActivePageTable, frame_allocator: &mut A) w
         Page::range_inclusive(heap_start_page, heap_end_page)
     };
 
+    serial_println!("Heap from {:X} to {:X}", HEAP_START, HEAP_START + HEAP_SIZE);
+
     for page in page_range {
         let frame = frame_allocator.allocate_frame().expect("Frame allocation failed");
+
         let flags = EntryFlags::PRESENT | EntryFlags::WRITABLE;
 
         page_table.map_to(page, frame, flags, frame_allocator)
@@ -67,6 +70,7 @@ pub fn test_heap() {
     {
         let heap_value_1 = Box::new(41);
         let heap_value_2 = Box::new(13);
+
         assert_eq!(*heap_value_1, 41);
         assert_eq!(*heap_value_2, 13);
     }

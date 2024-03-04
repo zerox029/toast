@@ -7,7 +7,7 @@ use crate::memory::{Frame, FrameAllocator};
 
 /// The amount of simultaneous frames that can be allocated with this allocator. A hard limit is needed because
 /// this allocator is used before the heap is initialized
-const ALLOCATION_LIMIT: usize = 100;
+const ALLOCATION_LIMIT: usize = 300;
 
 #[derive(Copy, Clone)]
 pub struct FrameStatus {

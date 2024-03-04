@@ -1,6 +1,6 @@
 use crate::drivers::ps2::{DATA_PORT, PS2Device, PS2DeviceType, PS2Port};
 use crate::drivers::ps2::PS2DeviceType::MF2Keyboard;
-use crate::{vga_println, vga_print, vga_buffer};
+use crate::{vga_println, vga_print};
 
 #[repr(u8)]
 enum Command {
@@ -98,7 +98,7 @@ impl PS2Keyboard {
             0x01 => (), // Escape pressed,
             0x1C => (), // Enter pressed TODO
             0x3B..=0x44 | 0x57 | 0x58 => (), // Fn keys pressed
-            0x0E => vga_buffer::backspace(), // Backspace pressed
+            0x0E => (), //vga_buffer::backspace(), // Backspace pressed
             0x0F => vga_println!("  "), // Tab pressed
             0x1D => self.is_lcontrol = true,
 
