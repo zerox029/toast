@@ -5,7 +5,6 @@ use crate::arch::x86_64::port_manager::{io_wait, Port};
 use crate::arch::x86_64::port_manager::ReadWriteStatus::{ReadWrite, WriteOnly};
 use crate::interrupts::interrupt_descriptor_table::*;
 use crate::interrupts::interrupt_service_routines::*;
-use crate::{vga_println, vga_print};
 
 mod interrupt_descriptor_table;
 mod interrupt_service_routines;
@@ -61,7 +60,7 @@ impl InterruptController {
     }
 
     pub fn enable_keyboard_interrupts(&mut self) {
-        vga_println!("ps2: enabling keyboard input");
+        info!("ps2: enabling keyboard input");
         self.master_pic_mask &= 0b11111101;
         Self::set_irq_masks(self.master_pic_mask, self.slave_pic_mask);
     }

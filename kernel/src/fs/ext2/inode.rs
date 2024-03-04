@@ -8,7 +8,6 @@ use crate::drivers::pci::ahci::AHCIDevice;
 use crate::fs::ext2::block::{BlockGroupDescriptor, Superblock};
 use crate::fs::ext2::directory::{DirectoryEntry};
 use crate::memory::MemoryManager;
-use crate::{vga_print, vga_println};
 
 #[repr(C)]
 pub(crate) struct Inode {
@@ -148,7 +147,7 @@ impl Inode {
             let file = unsafe { file.assume_init() };
 
             file.name();
-            vga_print!(" ");
+            print!(" ");
 
             file_address += file.rec_len.read() as u32;
 
@@ -158,7 +157,7 @@ impl Inode {
             }
         }
 
-        vga_println!("");
+        println!("");
     }
 
     /// Looks for an inode with the given name in the current inode's children.

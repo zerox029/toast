@@ -18,6 +18,7 @@ extern crate alloc;
 
 use core::arch::asm;
 use core::panic::PanicInfo;
+use futures_util::future::ok;
 use lazy_static::lazy_static;
 use limine::BaseRevision;
 use limine::memory_map::EntryType;
@@ -63,42 +64,35 @@ pub static HHDM_REQUEST: HhdmRequest = HhdmRequest::new();
 pub unsafe extern fn _start() {
     assert!(BASE_REVISION.is_supported());
 
+    init();
+
+    hcf();
+}
+
+unsafe fn init() {
     MemoryManager::init(MEMORY_MAP_REQUEST.get_response().expect("could not retrieve the kernel address"));
     Writer::init();
 
-
-    println!("test");
-    println!("ok");
-
-    hcf();
-    //init(multiboot_information_address);
-}
-
-fn init(multiboot_information_address: usize) {
     info!("Toast version v0.0.1-x86_64");
     unsafe { CPU_INFO.lock().print_brand(); }
-
-    let boot_info = unsafe{ arch::multiboot2::load(multiboot_information_address) };
 
     unsafe {
         Efer::write(EferFlags::NO_EXECUTE_ENABLE);
         Cr0::write(Cr0::read() | Cr0Flags::WRITE_PROTECT);
     }
 
-
-
     InterruptController::init();
     //GlobalDescriptorTable::init();
-    // init_acpi(boot_info); // TODO: Fix this
+
+    // init_acpi(boot_info); // TODO: This broke at some point, fix it
 
     let mut ahci_devices = drivers::pci::ahci::init();
     let fs = mount_filesystem(&mut ahci_devices[0]);
 
+    println!("Reading file /files/file.txt...");
     let file = fs.get_file_contents(&mut ahci_devices[0], "/files/file.txt").unwrap();
     let string_content = core::str::from_utf8(file.as_slice()).expect("Failed to read file");
-
-    vga_println!("Reading file /files/file.txt...");
-    vga_println!("{}", string_content);
+    println!("{}", string_content);
 
     let ps2_devices = init_ps2_controller();
     let mut executor = Executor::new();
@@ -110,9 +104,6 @@ fn init(multiboot_information_address: usize) {
             INTERRUPT_CONTROLLER.lock().enable_keyboard_interrupts();
         }
     }
-
-    #[cfg(test)]
-    serial_println!("WE ARE IN TEST");
 
     vga_print!(">");
 
@@ -126,8 +117,6 @@ fn panic(info: &PanicInfo) -> ! {
     loop {}
 }
 
-#[lang = "eh_personality"] #[no_mangle] pub extern fn eh_personality() {}
-
 fn hcf() -> ! {
     unsafe {
         asm!("cli");
@@ -136,6 +125,8 @@ fn hcf() -> ! {
         }
     }
 }
+
+#[lang = "eh_personality"] #[no_mangle] pub extern fn eh_personality() {}
 
 fn print_memory_map() {
     MEMORY_MAP_REQUEST.get_response().unwrap().entries().iter().for_each(|entry| {

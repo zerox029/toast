@@ -1,7 +1,6 @@
 use core::arch::asm;
 use core::fmt;
 use core::fmt::Formatter;
-use crate::{vga_println, vga_print, error};
 use crate::drivers::ps2::keyboard::{PS2Keyboard};
 use crate::interrupts::{MASTER_PIC_COMMAND_PORT, PIC_EOI};
 use crate::task::keyboard::add_scancode;
@@ -32,135 +31,135 @@ impl fmt::Debug for InterruptStackFrame {
 
 pub extern "x86-interrupt" fn division_error_handler(stack_frame: InterruptStackFrame) {
     error!("Caught a division error interrupt!");
-    vga_println!("{:#?}", stack_frame);
+    println!("{:#?}", stack_frame);
     unsafe { asm!("hlt;"); };
 }
 
 pub extern "x86-interrupt" fn debug_handler(stack_frame: InterruptStackFrame) {
     error!("Caught a debug interrupt!");
-    vga_println!("{:#?}", stack_frame);
+    println!("{:#?}", stack_frame);
     unsafe { asm!("hlt;"); };
 }
 
 pub extern "x86-interrupt" fn non_maskable_interrupt_handler(stack_frame: InterruptStackFrame) {
     error!("Caught a non-maskable interrupt!");
-    vga_println!("{:#?}", stack_frame);
+    println!("{:#?}", stack_frame);
     unsafe { asm!("hlt;"); };
 }
 
 pub extern "x86-interrupt" fn breakpoint_handler(stack_frame: InterruptStackFrame) {
     error!("Caught a breakpoint interrupt!");
-    vga_println!("{:#?}", stack_frame);
+    println!("{:#?}", stack_frame);
 }
 
 pub extern "x86-interrupt" fn overflow_handler(stack_frame: InterruptStackFrame) {
     error!("Caught an overflow interrupt!");
-    vga_println!("{:#?}", stack_frame);
+    println!("{:#?}", stack_frame);
     unsafe { asm!("hlt;"); };
 }
 
 pub extern "x86-interrupt" fn bound_range_exceeded_handler(stack_frame: InterruptStackFrame) {
     error!("Caught a bound range exceeded interrupt!");
-    vga_println!("{:#?}", stack_frame);
+    println!("{:#?}", stack_frame);
     unsafe { asm!("hlt;"); };
 }
 
 pub extern "x86-interrupt" fn invalid_opcode_handler(stack_frame: InterruptStackFrame) {
     error!("Caught an invalid opcode interrupt!");
-    vga_println!("{:#?}", stack_frame);
+    println!("{:#?}", stack_frame);
     unsafe { asm!("hlt;"); };
 }
 
 pub extern "x86-interrupt" fn device_not_available_handler(stack_frame: InterruptStackFrame) {
     error!("Caught a device not available interrupt!");
-    vga_println!("{:#?}", stack_frame);
+    println!("{:#?}", stack_frame);
     unsafe { asm!("hlt;"); };
 }
 
 pub extern "x86-interrupt" fn double_fault_handler(stack_frame: InterruptStackFrame, error_code: u64) {
     error!("Caught a double fault! Error code 0x{:X}", error_code);
-    vga_println!("{:#?}", stack_frame);
+    println!("{:#?}", stack_frame);
     unsafe { asm!("hlt;"); };
 }
 
 pub extern "x86-interrupt" fn invalid_tss_handler(stack_frame: InterruptStackFrame, error_code: u64) {
     error!("Caught an invalid tss interrupt! Error code 0x{:X}", error_code);
-    vga_println!("{:#?}", stack_frame);
+    println!("{:#?}", stack_frame);
     unsafe { asm!("hlt;"); };
 }
 
 pub extern "x86-interrupt" fn segment_not_present_handler(stack_frame: InterruptStackFrame, error_code: u64) {
     error!("Caught a segment not present interrupt! Error code 0x{:X}", error_code);
-    vga_println!("{:#?}", stack_frame);
+    println!("{:#?}", stack_frame);
     unsafe { asm!("hlt;"); };
 }
 
 pub extern "x86-interrupt" fn stack_segment_fault_handler(stack_frame: InterruptStackFrame, error_code: u64) {
     error!("Caught a stack segment fault interrupt! Error code 0x{:X}", error_code);
-    vga_println!("{:#?}", stack_frame);
+    println!("{:#?}", stack_frame);
     unsafe { asm!("hlt;"); };
 }
 
 pub extern "x86-interrupt" fn general_protection_fault_handler(stack_frame: InterruptStackFrame, error_code: u64) {
     error!("Caught a general protection fault interrupt! Error code 0x{:X}", error_code);
-    vga_println!("{:#?}", stack_frame);
+    println!("{:#?}", stack_frame);
     unsafe { asm!("hlt;"); };
 }
 
 pub extern "x86-interrupt" fn page_fault_handler(stack_frame: InterruptStackFrame, error_code: u64) {
     error!("Caught a page fault interrupt! Error code 0x{:X}", error_code);
-    vga_println!("{:#?}", stack_frame);
+    println!("{:#?}", stack_frame);
     unsafe { asm!("hlt;"); };
 }
 
 pub extern "x86-interrupt" fn x87_floating_point_exception_handler(stack_frame: InterruptStackFrame) {
     error!("Caught an x86 floating point exception interrupt!");
-    vga_println!("{:#?}", stack_frame);
+    println!("{:#?}", stack_frame);
 }
 
 pub extern "x86-interrupt" fn alignment_check_handler(stack_frame: InterruptStackFrame, error_code: u64) {
     error!("Caught an alignment check interrupt! Error code 0x{:X}", error_code);
-    vga_println!("{:#?}", stack_frame);
+    println!("{:#?}", stack_frame);
 }
 
 pub extern "x86-interrupt" fn machine_check_handler(stack_frame: InterruptStackFrame) {
     error!("Caught a machine check interrupt!");
-    vga_println!("{:#?}", stack_frame);
+    println!("{:#?}", stack_frame);
 }
 
 pub extern "x86-interrupt" fn simd_floating_point_exception_handler(stack_frame: InterruptStackFrame) {
     error!("Caught a SIMD floating point exception interrupt!");
-    vga_println!("{:#?}", stack_frame);
+    println!("{:#?}", stack_frame);
 }
 
 pub extern "x86-interrupt" fn virtualization_exception_handler(stack_frame: InterruptStackFrame) {
     error!("Caught a virtualization exception interrupt!");
-    vga_println!("{:#?}", stack_frame);
+    println!("{:#?}", stack_frame);
 }
 
 pub extern "x86-interrupt" fn control_protection_exception_handler(stack_frame: InterruptStackFrame, error_code: u64) {
     error!("Caught a control protection exception interrupt! Error code 0x{:X}", error_code);
-    vga_println!("{:#?}", stack_frame);
+    println!("{:#?}", stack_frame);
 }
 
 pub extern "x86-interrupt" fn hypervisor_injection_exception_handler(stack_frame: InterruptStackFrame) {
     error!("Caught a hypervisor injection exception interrupt!");
-    vga_println!("{:#?}", stack_frame);
+    println!("{:#?}", stack_frame);
 }
 
 pub extern "x86-interrupt" fn vmm_communication_exception_handler(stack_frame: InterruptStackFrame, error_code: u64) {
     error!("Caught a VMM communication exception interrupt! Error code 0x{:X}", error_code);
-    vga_println!("{:#?}", stack_frame);
+    println!("{:#?}", stack_frame);
 }
 
 pub extern "x86-interrupt" fn security_exception_handler(stack_frame: InterruptStackFrame, error_code: u64) {
     error!("Caught a security exception interrupt! Error code 0x{:X}", error_code);
-    vga_println!("{:#?}", stack_frame);
+    println!("{:#?}", stack_frame);
 }
 
 pub extern "x86-interrupt" fn irq0_handler(stack_frame: InterruptStackFrame) {
-    vga_println!("Caught IRQ0!");
-    vga_println!("{:#?}", stack_frame);
+    println!("Caught IRQ0!");
+    println!("{:#?}", stack_frame);
 }
 
 pub extern "x86-interrupt" fn irq1_handler() {
@@ -171,31 +170,31 @@ pub extern "x86-interrupt" fn irq1_handler() {
 }
 
 pub extern "x86-interrupt" fn irq2_handler(stack_frame: InterruptStackFrame) {
-    vga_println!("Caught IRQ2!");
-    vga_println!("{:#?}", stack_frame);
+    println!("Caught IRQ2!");
+    println!("{:#?}", stack_frame);
 }
 
 pub extern "x86-interrupt" fn irq3_handler(stack_frame: InterruptStackFrame) {
-    vga_println!("Caught IRQ3!");
-    vga_println!("{:#?}", stack_frame);
+    println!("Caught IRQ3!");
+    println!("{:#?}", stack_frame);
 }
 
 pub extern "x86-interrupt" fn irq4_handler(stack_frame: InterruptStackFrame) {
-    vga_println!("Caught IRQ4!");
-    vga_println!("{:#?}", stack_frame);
+    println!("Caught IRQ4!");
+    println!("{:#?}", stack_frame);
 }
 
 pub extern "x86-interrupt" fn irq5_handler(stack_frame: InterruptStackFrame) {
-    vga_println!("Caught IRQ5!");
-    vga_println!("{:#?}", stack_frame);
+    println!("Caught IRQ5!");
+    println!("{:#?}", stack_frame);
 }
 
 pub extern "x86-interrupt" fn irq6_handler(stack_frame: InterruptStackFrame) {
-    vga_println!("Caught IRQ6!");
-    vga_println!("{:#?}", stack_frame);
+    println!("Caught IRQ6!");
+    println!("{:#?}", stack_frame);
 }
 
 pub extern "x86-interrupt" fn irq7_handler(stack_frame: InterruptStackFrame) {
-    vga_println!("Caught IRQ7!");
-    vga_println!("{:#?}", stack_frame);
+    println!("Caught IRQ7!");
+    println!("{:#?}", stack_frame);
 }

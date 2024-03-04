@@ -1,18 +1,24 @@
-use alloc::{format, vec};
+use alloc::{vec};
 use alloc::vec::Vec;
-use core::arch::asm;
-use core::fmt;
-use core::fmt::{Arguments, Write};
-use core::mem::size_of;
+use core::fmt::Write;
 use conquer_once::spin::OnceCell;
 use limine::framebuffer::Framebuffer;
 use spin::Mutex;
 use crate::{FRAMEBUFFER_REQUEST, serial_println};
 use crate::graphics::fonts::{FONT, FONT_HEIGHT, FONT_WIDTH};
 
+const DEFAULT_COLOR_CODE: ColorCode = ColorCode::new(Rgb8(0xFFFFFF), Rgb8(0));
+
 pub static INSTANCE: OnceCell<Mutex<Writer>> = OnceCell::uninit();
 
-#[derive(Debug, Clone, Copy, Default)]
+pub enum LogLevel {
+    Info,
+    Warning,
+    Error,
+    Ok,
+}
+
+#[derive(Debug, Clone, Copy, Default, Eq, PartialEq)]
 pub struct Rgb8(pub u32);
 
 impl Rgb8 {
@@ -21,19 +27,19 @@ impl Rgb8 {
     }
 }
 
-#[derive(Debug, Clone, Copy, Default)]
+#[derive(Debug, Clone, Copy, Default, Eq, PartialEq)]
 pub struct ColorCode {
     foreground: Rgb8,
     background: Rgb8,
 }
 
 impl ColorCode {
-    pub fn new(foreground: Rgb8, background: Rgb8) -> Self {
+    pub const fn new(foreground: Rgb8, background: Rgb8) -> Self {
         Self { foreground, background }
     }
 }
 
-#[derive(Debug, Clone, Copy, Default)]
+#[derive(Debug, Clone, Copy, Default, Eq, PartialEq)]
 pub struct ScreenChar {
     ascii_character: u8,
     color_code: ColorCode,
@@ -46,11 +52,11 @@ impl ScreenChar {
 }
 
 pub struct Writer {
+    color_code: ColorCode,
     buffer_width: usize,
     buffer_height: usize,
     column_position: usize,
     screen_buffer: Vec<Vec<Option<ScreenChar>>>,
-
 }
 
 impl Writer {
@@ -70,6 +76,7 @@ impl Writer {
         let screen_buffer = vec![vec![None; buffer_height]; buffer_width];
 
         let writer = Self {
+            color_code: DEFAULT_COLOR_CODE,
             buffer_width,
             buffer_height,
             column_position: 0,
@@ -96,20 +103,41 @@ impl Writer {
                     self.new_line();
                 }
 
-                self.screen_buffer[col][row] = Some(screen_char);
-
                 draw_char(screen_char, col, row);
+                self.screen_buffer[col][row] = Some(screen_char);
             }
+        }
+    }
+
+    pub fn clear_at(&mut self, col: usize, row: usize) {
+        let blank = ScreenChar {
+            ascii_character: b' ',
+            color_code: ColorCode::new(Rgb8(0xFFFFFF), Rgb8(0)),
+        };
+
+        draw_char(blank, col, row);
+        self.screen_buffer[col][row] = None;
+    }
+
+    fn clear_row(&mut self, row: usize) {
+        for col in 0..self.buffer_width {
+            self.clear_at(col, row);
         }
     }
 
     pub fn new_line(&mut self) {
         for row in (1..self.buffer_height) {
             for col in (0..self.buffer_width) {
-                let character = self.screen_buffer[col][row];
+                let bottom_character = self.screen_buffer[col][row];
+                let top_character = self.screen_buffer[col][row - 1];
 
-                if let Some(character) = character {
-                    self.write_at(character, col, row - 1);
+                if top_character != bottom_character {
+                    if let Some(character) = bottom_character {
+                        self.write_at(character, col, row - 1);
+                    }
+                    else {
+                        self.clear_at(col, row - 1);
+                    }
                 }
             }
         }
@@ -117,23 +145,12 @@ impl Writer {
         self.clear_row(self.buffer_height - 1);
         self.column_position = 0;
     }
-
-    fn clear_row(&mut self, row: usize) {
-        let blank = ScreenChar {
-            ascii_character: b' ',
-            color_code: ColorCode::new(Rgb8(0xFFFFFF), Rgb8(0)),
-        };
-
-        for col in 0..self.buffer_width {
-            self.write_at(blank, col, row);
-        }
-    }
 }
 
-impl fmt::Write for Writer {
-    fn write_str(&mut self, s: &str) -> fmt::Result {
+impl core::fmt::Write for Writer {
+    fn write_str(&mut self, s: &str) -> core::fmt::Result {
         for byte in s.bytes() {
-            self.write_char(ScreenChar::new(byte, ColorCode::new(Rgb8(0xFFFFFF), Rgb8(0))));
+            self.write_char(ScreenChar::new(byte, self.color_code));
         }
 
         Ok(())
@@ -177,8 +194,56 @@ macro_rules! println {
     ($fmt:expr, $($arg:tt)*) => (print!(concat!($fmt, "\n"), $($arg)*));
 }
 
+#[macro_export]
+macro_rules! info {
+    ($fmt:expr) => ({
+        $crate::graphics::framebuffer::_print_header($crate::graphics::framebuffer::LogLevel::Info);
+        print!(concat!($fmt, "\n"));
+    });
+    ($fmt:expr, $($arg:tt)*) => ({
+        $crate::graphics::framebuffer::_print_header($crate::graphics::framebuffer::LogLevel::Info);
+        print!(concat!($fmt, "\n"), $($arg)*);
+    });
+}
+
+#[macro_export]
+macro_rules! warn {
+    ($fmt:expr) => ({
+        $crate::graphics::framebuffer::_print_header($crate::graphics::framebuffer::LogLevel::Warning);
+        print!(concat!($fmt, "\n"));
+    });
+    ($fmt:expr, $($arg:tt)*) => ({
+        $crate::graphics::framebuffer::_print_header($crate::graphics::framebuffer::LogLevel::Warning);
+        print!(concat!($fmt, "\n"), $($arg)*);
+    });
+}
+
+#[macro_export]
+macro_rules! error {
+    ($fmt:expr) => ({
+        $crate::graphics::framebuffer::_print_header($crate::graphics::framebuffer::LogLevel::Error);
+        print!(concat!($fmt, "\n"));
+    });
+    ($fmt:expr, $($arg:tt)*) => ({
+        $crate::graphics::framebuffer::_print_header($crate::graphics::framebuffer::LogLevel::Error);
+        print!(concat!($fmt, "\n"), $($arg)*);
+    });
+}
+
+#[macro_export]
+macro_rules! ok {
+    ($fmt:expr) => ({
+        $crate::graphics::framebuffer::_print_header($crate::graphics::framebuffer::LogLevel::Ok);
+        print!(concat!($fmt, "\n"));
+    });
+    ($fmt:expr, $($arg:tt)*) => ({
+        $crate::graphics::framebuffer::_print_header($crate::graphics::framebuffer::LogLevel::Ok);
+        print!(concat!($fmt, "\n"), $($arg)*);
+    });
+}
+
 #[doc(hidden)]
-pub fn _print(args: Arguments) {
+pub fn _print(args: core::fmt::Arguments) {
     use core::fmt::Write;
 
     let writer = Writer::instance();
@@ -186,6 +251,59 @@ pub fn _print(args: Arguments) {
         Some(writer) => {
             writer.lock().write_fmt(args).unwrap()
         }
+        None => {
+            serial_println!("buffer uninitialized");
+        }
+    }
+}
+
+#[doc(hidden)]
+pub fn _print_header(header_type: LogLevel) {
+    let mut writer = Writer::instance();
+
+    match writer {
+        Some(writer) => {
+            let mut writer = writer.lock();
+
+            match header_type {
+                LogLevel::Info => {
+                    writer.write_str("[ ").unwrap();
+
+                    writer.color_code = ColorCode::new(Rgb8(0x5b616b), Rgb8(0));
+                    writer.write_str("INFO").unwrap();
+                    writer.color_code = DEFAULT_COLOR_CODE;
+
+                    writer.write_str(" ] ").unwrap();
+                }
+                LogLevel::Warning => {
+                    writer.write_str("[ ").unwrap();
+
+                    writer.color_code = ColorCode::new(Rgb8(0xFFFF00), Rgb8(0));
+                    writer.write_str("WARN").unwrap();
+                    writer.color_code = DEFAULT_COLOR_CODE;
+
+                    writer.write_str(" ] ").unwrap();
+                }
+                LogLevel::Error => {
+                    writer.write_str("[ ").unwrap();
+
+                    writer.color_code = ColorCode::new(Rgb8(0xFF4100), Rgb8(0));
+                    writer.write_str("FAIL").unwrap();
+                    writer.color_code = DEFAULT_COLOR_CODE;
+
+                    writer.write_str(" ] ").unwrap();
+                }
+                LogLevel::Ok => {
+                    writer.write_str("[ ").unwrap();
+
+                    writer.color_code = ColorCode::new(Rgb8(0x00FF00), Rgb8(0));
+                    writer.write_str(" OK ").unwrap();
+                    writer.color_code = DEFAULT_COLOR_CODE;
+
+                    writer.write_str(" ] ").unwrap();
+                }
+            }
+        },
         None => {
             serial_println!("buffer uninitialized");
         }

@@ -1,6 +1,5 @@
 use crate::drivers::ps2::{DATA_PORT, PS2Device, PS2DeviceType, PS2Port};
 use crate::drivers::ps2::PS2DeviceType::MF2Keyboard;
-use crate::{vga_println, vga_print};
 
 #[repr(u8)]
 enum Command {
@@ -99,7 +98,7 @@ impl PS2Keyboard {
             0x1C => (), // Enter pressed TODO
             0x3B..=0x44 | 0x57 | 0x58 => (), // Fn keys pressed
             0x0E => (), //vga_buffer::backspace(), // Backspace pressed
-            0x0F => vga_println!("  "), // Tab pressed
+            0x0F => println!("  "), // Tab pressed
             0x1D => self.is_lcontrol = true,
 
             0x2A => self.is_lshift = true, // Left shift pressed
@@ -123,10 +122,10 @@ impl PS2Keyboard {
 
             _ => if scancode as usize <= SCANCODE_SET_1.len() {
                 if self.is_caps() {
-                    vga_print!("{}", SCANCODE_SET_1[scancode as usize - 1]);
+                    print!("{}", SCANCODE_SET_1[scancode as usize - 1]);
                 }
                 else {
-                    vga_print!("{}", SCANCODE_SET_1[scancode as usize - 1].to_lowercase());
+                    print!("{}", SCANCODE_SET_1[scancode as usize - 1].to_lowercase());
                 }
             }
         }

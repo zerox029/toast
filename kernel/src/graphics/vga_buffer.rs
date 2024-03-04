@@ -171,7 +171,7 @@ macro_rules! vga_println {
 }
 
 #[macro_export]
-macro_rules! info {
+macro_rules! vga_info {
     ($fmt:expr) => ({
         $crate::graphics::vga_buffer::print_header($crate::graphics::vga_buffer::MessageType::Info);
         vga_print!(concat!($fmt, "\n"));
@@ -183,7 +183,7 @@ macro_rules! info {
 }
 
 #[macro_export]
-macro_rules! warn {
+macro_rules! vga_warn {
     ($fmt:expr) => ({
         $crate::graphics::vga_buffer::print_header($crate::graphics::vga_buffer::MessageType::Warning);
         vga_print!(concat!($fmt, "\n"));
@@ -195,7 +195,7 @@ macro_rules! warn {
 }
 
 #[macro_export]
-macro_rules! error {
+macro_rules! vga_error {
     ($fmt:expr) => ({
         $crate::graphics::vga_buffer::print_header($crate::graphics::vga_buffer::MessageType::Error);
         vga_print!(concat!($fmt, "\n"));
@@ -207,7 +207,7 @@ macro_rules! error {
 }
 
 #[macro_export]
-macro_rules! ok {
+macro_rules! vga_ok {
     ($fmt:expr) => ({
         $crate::graphics::vga_buffer::print_header($crate::graphics::vga_buffer::MessageType::Ok);
         vga_print!(concat!($fmt, "\n"));

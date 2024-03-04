@@ -6,9 +6,9 @@ use limine::response::{MemoryMapResponse};
 use spin::Mutex;
 use crate::memory::linear_frame_allocator::LinearFrameAllocator;
 use crate::memory::paging::{ActivePageTable, Page, PhysicalAddress};
-use crate::{info, serial_println, serial_print};
 use crate::memory::buddy_allocator::BuddyAllocator;
 use crate::memory::paging::entry::EntryFlags;
+use crate::serial_println;
 
 use self::paging::setup_page_tables;
 use self::heap_allocator::{init_heap};
@@ -82,7 +82,6 @@ pub struct MemoryManager {
 
 impl MemoryManager {
     pub fn init(memory_map: &'static MemoryMapResponse) {
-        //info!("mm: init...");
         serial_println!("mm: init...");
 
         let mut linear_allocator = LinearFrameAllocator::new(memory_map);

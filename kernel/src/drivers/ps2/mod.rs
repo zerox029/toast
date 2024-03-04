@@ -5,7 +5,6 @@ use core::fmt;
 use core::fmt::{Formatter, Debug};
 use downcast_rs::{Downcast, impl_downcast};
 use spin::Mutex;
-use crate::{vga_print, info, warn, ok};
 use crate::arch::x86_64::port_manager::Port;
 use crate::arch::x86_64::port_manager::ReadWriteStatus::*;
 use crate::drivers::ps2::keyboard::PS2Keyboard;

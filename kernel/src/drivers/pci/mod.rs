@@ -2,7 +2,6 @@ use alloc::vec::Vec;
 use spin::Mutex;
 use crate::arch::x86_64::port_manager::Port;
 use crate::arch::x86_64::port_manager::ReadWriteStatus::ReadWrite;
-use crate::{vga_print, info};
 use crate::utils::bitutils::is_nth_bit_set;
 
 pub mod ahci;

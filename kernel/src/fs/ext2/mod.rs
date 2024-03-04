@@ -7,10 +7,8 @@ mod directory;
 use alloc::vec::Vec;
 use core::ops::ControlFlow;
 use crate::drivers::pci::ahci::AHCIDevice;
-use crate::{vga_print, info, serial_println};
 use crate::fs::ext2::block::{Superblock};
 use crate::fs::ext2::inode::{Inode};
-use crate::memory::MemoryManager;
 
 const ROOT_INODE_ID: usize = 2;
 

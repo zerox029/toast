@@ -11,14 +11,11 @@ use alloc::vec::Vec;
 use core::arch::asm;
 use core::ffi::c_void;
 use core::mem::size_of;
-use core::ops::DerefMut;
 use core::ptr;
-use crate::{vga_print, warn, info, ok, serial_println};
 use crate::drivers::pci::{find_all_pci_devices, PCIDevice};
-use crate::memory::{Frame, INSTANCE, MemoryManager};
+use crate::memory::{Frame, MemoryManager};
 use crate::memory::paging::entry::EntryFlags;
 use crate::utils::bitutils::is_nth_bit_set;
-use crate::memory::FrameAllocator;
 
 const SATA_SIG_ATA: u32     = 0x00000101;   // SATA drive
 const SATA_SIG_ATAPI: u32   = 0xEB140101;   // SATAPI drive

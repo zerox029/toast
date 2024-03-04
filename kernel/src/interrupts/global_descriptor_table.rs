@@ -2,7 +2,6 @@ use alloc::boxed::Box;
 use core::arch::{asm};
 use core::mem::size_of;
 use bitfield::bitfield;
-use crate::{vga_println, vga_print};
 
 bitfield! {
     #[derive(Default)]
@@ -166,7 +165,7 @@ pub fn jump_to_user_mode() {
 }
 
 extern "C" fn test_user_function() {
-    vga_println!("Welcome to user land!!");
+    println!("Welcome to user land!!");
 
     loop {}
 }
