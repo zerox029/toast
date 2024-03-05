@@ -1,4 +1,5 @@
 use core::fmt;
+use core::fmt::Write;
 use core::ptr::Unique;
 use spin::Mutex;
 use volatile::Volatile;
@@ -219,7 +220,7 @@ macro_rules! vga_ok {
 }
 
 pub fn print(args: fmt::Arguments) {
-    //WRITER.lock().write_fmt(args).unwrap();
+    WRITER.lock().write_fmt(args).unwrap();
 }
 
 pub fn print_header(header_type: MessageType) {

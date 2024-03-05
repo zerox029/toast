@@ -132,7 +132,7 @@ impl PS2Keyboard {
     }
 
     fn is_caps(&self) -> bool {
-        !self.is_caps_lock != !(self.is_lshift | self.is_rshift)
+        self.is_caps_lock != self.is_lshift | self.is_rshift
     }
 }
 

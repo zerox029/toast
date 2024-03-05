@@ -5,10 +5,9 @@ use alloc::boxed::Box;
 use alloc::vec::Vec;
 use crate::memory::{FrameAllocator};
 use crate::memory::heap_allocator::slab_allocator::SlabAllocator;
-use crate::memory::paging::mapper::Mapper;
 use crate::memory::paging::{ActivePageTable, Page, VirtualAddress};
 use crate::memory::paging::entry::EntryFlags;
-use crate::{vga_print, vga_ok, serial_println, HHDM_OFFSET};
+use crate::{HHDM_OFFSET, serial_println};
 
 pub const HEAP_START: usize = 0x4444_4444_0000;
 pub const HEAP_SIZE: usize = 1000 * 1024; // 1 MiB

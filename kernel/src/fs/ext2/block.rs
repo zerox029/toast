@@ -3,7 +3,6 @@ use core::mem::{MaybeUninit, size_of};
 use bitflags::bitflags;
 use volatile_register::RO;
 use crate::drivers::pci::ahci::AHCIDevice;
-use crate::memory::MemoryManager;
 
 const EXT2_SIGNATURE: u16 = 0xEF53;
 const SUPERBLOCK_OFFSET: u16 = 1024;

@@ -3,9 +3,7 @@ use alloc::vec::Vec;
 use core::cmp::min;
 use limine::memory_map::{Entry, EntryType};
 use limine::response::MemoryMapResponse;
-use crate::arch::multiboot2::structures::{MemoryMapEntry, MemoryMapIter};
 use crate::memory::{Frame, FrameAllocator, PAGE_SIZE};
-use crate::{vga_println, vga_print, serial_println};
 use crate::memory::buddy_allocator::BlockType::{LeftBuddy, RightBuddy, TopLevel};
 
 const MAX_ORDER: usize = 10;
@@ -76,8 +74,8 @@ impl BuddyAllocator {
             panic!("Cannot allocate more than {} contiguous frames", MAX_ORDER);
         }
 
-        let first_free_block = self.memory_blocks[order].iter_mut().find(|block| block.is_allocated == false);
-        return if first_free_block.is_some() {
+        let first_free_block = self.memory_blocks[order].iter_mut().find(|block| !block.is_allocated);
+        if first_free_block.is_some() {
             let block = first_free_block.unwrap();
             block.is_allocated = true;
 
@@ -144,7 +142,7 @@ impl BuddyAllocator {
     /// Allocates a single frame at a given address. This is mostly used when transitioning from
     /// the linear allocator to this one.
     pub fn allocate_frame_at_address(&mut self, address: usize) -> Option<usize> {
-        if self.memory_blocks[0].iter().find(|block| block.is_allocated && block.starting_address == address).is_some() {
+        if self.memory_blocks[0].iter().any(|block| block.is_allocated && block.starting_address == address) {
             panic!("frame already allocated");
         }
 

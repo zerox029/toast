@@ -1,10 +1,10 @@
 use core::arch::asm;
 use core::ptr::Unique;
 use crate::memory::{Frame, FrameAllocator, PAGE_SIZE};
-use crate::memory::paging::table::{Level4, P4, Table};
+use crate::memory::paging::table::{Level4, Table};
 use crate::memory::paging::{ENTRY_COUNT, Page, PhysicalAddress, VirtualAddress};
 use crate::memory::paging::entry::EntryFlags;
-use crate::{serial_println, HHDM_OFFSET};
+use crate::{HHDM_OFFSET};
 use crate::arch::x86_64::registers::cr3;
 
 pub struct Mapper {

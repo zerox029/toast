@@ -1,6 +1,7 @@
 use alloc::boxed::Box;
 use core::arch::{asm};
 use core::mem::size_of;
+use core::pin::Pin;
 use bitfield::bitfield;
 
 bitfield! {
@@ -70,7 +71,7 @@ pub struct GlobalDescriptorTable {
 impl GlobalDescriptorTable {
     pub fn init() {
         let gdtr = sgdt();
-        let mut gdt = unsafe { &mut *(gdtr.offset as *mut GlobalDescriptorTable) };
+        let gdt = unsafe { &mut *(gdtr.offset as *mut GlobalDescriptorTable) };
 
         // This should already be set by the boot script, but I keep it as a reference
         gdt.kernel_code.set_access_byte(0b10011000); // E S P 43 44 47
@@ -93,7 +94,7 @@ impl GlobalDescriptorTable {
         // Question: Should this be updated everytime we jump in user mode?
         let rsp = crate::arch::x86_64::registers::rsp();
 
-        let mut tss = Box::into_pin(Box::new(Tss::default()));
+        let mut tss: Pin<Box<Tss>> = Box::into_pin(Box::default());
         tss.rsp0 = rsp as u64;
         tss.rsp1 = rsp as u64;
         tss.rsp2 = rsp as u64;
@@ -164,7 +165,7 @@ pub fn jump_to_user_mode() {
     }
 }
 
-extern "C" fn test_user_function() {
+extern "C" fn test_user_function() -> ! {
     println!("Welcome to user land!!");
 
     loop {}

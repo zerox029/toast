@@ -126,8 +126,8 @@ impl Writer {
     }
 
     pub fn new_line(&mut self) {
-        for row in (1..self.buffer_height) {
-            for col in (0..self.buffer_width) {
+        for row in 1..self.buffer_height {
+            for col in 0..self.buffer_width {
                 let bottom_character = self.screen_buffer[col][row];
                 let top_character = self.screen_buffer[col][row - 1];
 
@@ -163,9 +163,9 @@ fn draw_char(screen_char: ScreenChar, column: usize, row: usize) {
             let mask = [128, 64, 32, 16, 8, 4, 2, 1];
             let glyph = FONT[screen_char.ascii_character as usize];
 
-            for cy in 0..FONT_HEIGHT {
-                for cx in 0..FONT_WIDTH {
-                    let color = if glyph[cy] & mask[cx] == 0 {
+            for (cy, glyph) in glyph.iter().enumerate().take(FONT_HEIGHT) {
+                for (cx, mask) in mask.iter().enumerate().take(FONT_WIDTH) {
+                    let color = if glyph & mask == 0 {
                         screen_char.color_code.background
                     } else {
                         screen_char.color_code.foreground
@@ -244,8 +244,6 @@ macro_rules! ok {
 
 #[doc(hidden)]
 pub fn _print(args: core::fmt::Arguments) {
-    use core::fmt::Write;
-
     let writer = Writer::instance();
     match writer {
         Some(writer) => {
@@ -259,7 +257,7 @@ pub fn _print(args: core::fmt::Arguments) {
 
 #[doc(hidden)]
 pub fn _print_header(header_type: LogLevel) {
-    let mut writer = Writer::instance();
+    let writer = Writer::instance();
 
     match writer {
         Some(writer) => {

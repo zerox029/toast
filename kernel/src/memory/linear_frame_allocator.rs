@@ -1,8 +1,6 @@
-use alloc::borrow::ToOwned;
 use alloc::vec::Vec;
 use limine::memory_map::{Entry, EntryType};
 use limine::response::MemoryMapResponse;
-use crate::arch::multiboot2::structures::{MemoryMapEntry, MemoryMapIter};
 use crate::memory::{Frame, FrameAllocator};
 
 /// The amount of simultaneous frames that can be allocated with this allocator. A hard limit is needed because
@@ -39,7 +37,7 @@ impl FrameAllocator for LinearFrameAllocator {
     fn allocate_frame(&mut self) -> Option<Frame> {
         // Look for a previously allocated frame that has been freed
         for frame_number in 0..self.allocated_frames_count {
-            if self.allocated_frames[frame_number].used == false {
+            if !self.allocated_frames[frame_number].used {
                 return Some(Frame { number: self.allocated_frames[frame_number].frame_id.unwrap() });
             }
         }
@@ -65,7 +63,7 @@ impl FrameAllocator for LinearFrameAllocator {
                 self.allocated_frames[self.allocated_frames_count] = FrameStatus { frame_id: Some(frame.number), used: true };
                 self.allocated_frames_count += 1;
 
-                return Some(frame)
+                Some(frame)
             }
         }
         else {
@@ -103,7 +101,7 @@ impl LinearFrameAllocator {
                 let end_address = area.base + area.length - 1;
                 Frame::containing_address(end_address as usize) >= self.next_free_frame
             }
-        }).min_by_key(|area| area.base).map(|&area| area);
+        }).min_by_key(|area| area.base).map(|area| area).copied();
 
         // Set the new next free frame
         if let Some(area) = self.current_area {

@@ -1,7 +1,6 @@
 pub mod root_system_descriptor_pointer;
 pub mod acpi_tables;
 
-use core::ops::DerefMut;
 use crate::arch::multiboot2::BootInformation;
 use crate::drivers::acpi::root_system_descriptor_pointer::{find_rsdp, Rsdp};
 use crate::drivers::acpi::acpi_tables::{FixedACPIDescriptionTable, RootSystemDescriptorTable};

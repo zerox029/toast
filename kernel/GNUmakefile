@@ -8,13 +8,13 @@ BUILD_NAME := toast
 .PHONY: all
 all:
 	cargo build --target $(RUST_TARGET)
-	cp target/$(RUST_TARGET)/debug/$(BUILD_NAME) kernel
+	@cp target/$(RUST_TARGET)/debug/$(BUILD_NAME) kernel
 
 # Remove object files and the final executable.
 .PHONY: clean
 clean:
-	cargo clean
-	rm -rf kernel
+	@cargo clean
+	@rm -rf kernel
 
 .PHONY: distclean
 distclean: clean

@@ -18,7 +18,6 @@ extern crate alloc;
 
 use core::arch::asm;
 use core::panic::PanicInfo;
-use futures_util::future::ok;
 use lazy_static::lazy_static;
 use limine::BaseRevision;
 use limine::memory_map::EntryType;
@@ -61,6 +60,7 @@ pub static MEMORY_MAP_REQUEST: MemoryMapRequest = MemoryMapRequest::new();
 pub static HHDM_REQUEST: HhdmRequest = HhdmRequest::new();
 
 #[no_mangle]
+#[allow(clippy::missing_safety_doc)]
 pub unsafe extern fn _start() {
     assert!(BASE_REVISION.is_supported());
 
@@ -89,7 +89,7 @@ unsafe fn init() {
     let mut ahci_devices = drivers::pci::ahci::init();
     let fs = mount_filesystem(&mut ahci_devices[0]);
 
-    println!("Reading file /files/file.txt...");
+    println!("Reading file /files/files.txt...");
     let file = fs.get_file_contents(&mut ahci_devices[0], "/files/file.txt").unwrap();
     let string_content = core::str::from_utf8(file.as_slice()).expect("Failed to read file");
     println!("{}", string_content);
@@ -105,7 +105,7 @@ unsafe fn init() {
         }
     }
 
-    vga_print!(">");
+    println!(">");
 
     executor.run();
 }
@@ -139,7 +139,7 @@ fn print_memory_map() {
             EntryType::BOOTLOADER_RECLAIMABLE => serial_println!("bootloader recl entry of size 0x{:X} at {:X}", entry.length, entry.base),
             EntryType::KERNEL_AND_MODULES => serial_println!("kernel entry of size 0x{:X} at {:X}", entry.length, entry.base),
             EntryType::FRAMEBUFFER => serial_println!("framebuffer entry of size 0x{:X} at {:X}", entry.length, entry.base),
-            _ => return
+            _ => ()
         }
     });
 }

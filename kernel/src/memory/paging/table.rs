@@ -5,8 +5,6 @@ use core::ops::{Index, IndexMut};
 use crate::memory::FrameAllocator;
 use crate::HHDM_OFFSET;
 
-pub const P4: *mut Table<Level4> = 0xffffffff_fffff000 as *mut _;
-
 pub struct Table<L: TableLevel> {
     entries: [Entry; ENTRY_COUNT],
     level: PhantomData<L>,

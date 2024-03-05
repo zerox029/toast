@@ -7,7 +7,6 @@ use volatile_register::RO;
 use crate::drivers::pci::ahci::AHCIDevice;
 use crate::fs::ext2::block::{BlockGroupDescriptor, Superblock};
 use crate::fs::ext2::directory::{DirectoryEntry};
-use crate::memory::MemoryManager;
 
 #[repr(C)]
 pub(crate) struct Inode {

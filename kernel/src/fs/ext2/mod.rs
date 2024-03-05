@@ -56,10 +56,7 @@ impl Ext2FileSystem {
     pub fn get_file_contents(&self, drive: &mut AHCIDevice, path: &str) -> Option<Vec<u8>> {
         let inode = self.find_file(drive, path);
 
-        match inode {
-            Some(inode) => Some(inode.get_content(drive, &self.superblock)),
-            None => None,
-        }
+        inode.map(|inode| inode.get_content(drive, &self.superblock))
     }
 }
 

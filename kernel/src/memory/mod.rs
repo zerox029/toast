@@ -1,7 +1,5 @@
 use core::ops::DerefMut;
 use conquer_once::spin::OnceCell;
-use limine::memory_map::EntryType;
-use limine::request::KernelAddressRequest;
 use limine::response::{MemoryMapResponse};
 use spin::Mutex;
 use crate::memory::linear_frame_allocator::LinearFrameAllocator;
@@ -10,7 +8,6 @@ use crate::memory::buddy_allocator::BuddyAllocator;
 use crate::memory::paging::entry::EntryFlags;
 use crate::serial_println;
 
-use self::paging::setup_page_tables;
 use self::heap_allocator::{init_heap};
 
 pub mod linear_frame_allocator;
@@ -140,8 +137,7 @@ impl MemoryManager {
         alloc_start
     }
 
-    pub fn pmm_zero_alloc(&mut self, size: usize, flags: EntryFlags) {
-
+    pub fn pmm_zero_alloc(&mut self, _size: usize, _flags: EntryFlags) {
         unimplemented!();
     }
 
