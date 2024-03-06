@@ -1,5 +1,6 @@
 use core::arch::asm;
 use spin::Mutex;
+use crate::memory::VirtualAddress;
 
 pub static IDT: InterruptDescriptorTable = InterruptDescriptorTable::new();
 
@@ -71,7 +72,7 @@ impl GateDescriptor {
         }
     }
 
-    pub fn new(handler_address: usize) -> Self {
+    pub fn new(handler_address: VirtualAddress) -> Self {
         let segment: u16;
         unsafe { asm!("mov {0:x}, cs", out(reg) segment, options(nostack, nomem)) };
 
@@ -106,7 +107,7 @@ impl InterruptDescriptorTable {
         entries[vector] = entry;
     }
 
-    pub fn get_address(&self) -> u64 {
-        self.entries.lock().as_ptr() as u64
+    pub fn get_address(&self) -> VirtualAddress {
+        self.entries.lock().as_ptr() as VirtualAddress
     }
 }

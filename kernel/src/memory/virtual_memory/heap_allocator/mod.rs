@@ -3,13 +3,14 @@ mod slab_allocator;
 
 use alloc::boxed::Box;
 use alloc::vec::Vec;
-use crate::memory::{FrameAllocator};
-use crate::memory::heap_allocator::slab_allocator::SlabAllocator;
-use crate::memory::paging::{ActivePageTable, Page, VirtualAddress};
-use crate::memory::paging::entry::EntryFlags;
+use crate::memory::{VirtualAddress};
+use crate::memory::virtual_memory::heap_allocator::slab_allocator::SlabAllocator;
+use crate::memory::virtual_memory::paging::{ActivePageTable, Page};
+use crate::memory::virtual_memory::paging::entry::EntryFlags;
 use crate::{HHDM_OFFSET, serial_println};
+use crate::memory::physical_memory::FrameAllocator;
 
-pub const HEAP_START: usize = 0x4444_4444_0000;
+pub const HEAP_START: VirtualAddress = 0x4444_4444_0000;
 pub const HEAP_SIZE: usize = 1000 * 1024; // 1 MiB
 
 #[global_allocator]
@@ -31,7 +32,7 @@ impl<A> Locked<A> {
     }
 }
 
-fn align_up(addr: usize, align: usize) -> usize {
+fn align_up(addr: VirtualAddress, align: usize) -> VirtualAddress {
     (addr + align - 1) & !(align - 1)
 }
 

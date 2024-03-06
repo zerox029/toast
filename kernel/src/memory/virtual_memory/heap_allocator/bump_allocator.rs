@@ -1,11 +1,12 @@
 use core::alloc::Layout;
 use core::ptr;
 use core::alloc::GlobalAlloc;
+use crate::memory::VirtualAddress;
 use super::{Locked, align_up};
 
 pub struct BumpAllocator {
-    heap_start: usize,
-    heap_end: usize,
+    heap_start: VirtualAddress,
+    heap_end: VirtualAddress,
     next: usize,
     allocations: usize,
 }
@@ -20,7 +21,7 @@ impl BumpAllocator {
         }
     }
 
-    pub unsafe fn init(&mut self, heap_start: usize, heap_size: usize) {
+    pub unsafe fn init(&mut self, heap_start: VirtualAddress, heap_size: usize) {
         self.heap_start = heap_start;
         self.heap_end = heap_start + heap_size;
         self.next = heap_start;

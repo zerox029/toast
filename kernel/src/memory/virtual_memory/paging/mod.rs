@@ -2,10 +2,11 @@ use core::arch::asm;
 use core::ops::{Deref, DerefMut};
 use limine::memory_map::EntryType;
 use limine::response::MemoryMapResponse;
-use crate::memory::{Frame, FrameAllocator, PAGE_SIZE};
-use crate::memory::paging::entry::EntryFlags;
-use crate::memory::paging::temporary_page::TemporaryPage;
-use crate::memory::paging::mapper::Mapper;
+use crate::memory::{PAGE_SIZE, PhysicalAddress, VirtualAddress};
+use crate::memory::physical_memory::{Frame, FrameAllocator};
+use crate::memory::virtual_memory::paging::entry::EntryFlags;
+use crate::memory::virtual_memory::paging::temporary_page::TemporaryPage;
+use crate::memory::virtual_memory::paging::mapper::Mapper;
 use crate::{HHDM_OFFSET, KERNEL_START_VMA_ADDRESS, serial_println};
 use crate::arch::x86_64::registers::cr3;
 
@@ -16,16 +17,13 @@ pub mod mapper;
 
 const ENTRY_COUNT: usize = 512;
 
-pub type PhysicalAddress = usize;
-pub type VirtualAddress = usize;
-
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
 pub struct Page {
     number: usize,
 }
 
 impl Page {
-    /// Returns the page containing a virtual address
+    /// Returns the page containing a virtual_memory address
     pub fn containing_address(address: VirtualAddress) -> Page {
         // Checking that the sign extension bits correspond to the 47th bit
         assert!(!(0x0000_8000_0000_0000..0xffff_8000_0000_0000).contains(&address), "Invalid address: 0x{:x}", address);
@@ -40,20 +38,20 @@ impl Page {
         }
     }
 
-    pub fn start_address(&self) -> usize {
+    pub fn start_address(&self) -> VirtualAddress {
         self.number * PAGE_SIZE
     }
 
-    fn p4_index(&self) -> usize {
+    fn p4_index(&self) -> VirtualAddress {
         (self.number >> 27) & 0o777
     }
-    fn p3_index(&self) -> usize {
+    fn p3_index(&self) -> VirtualAddress {
         (self.number >> 18) & 0o777
     }
-    fn p2_index(&self) -> usize {
+    fn p2_index(&self) -> VirtualAddress {
         (self.number >> 9) & 0o777
     }
-    fn p1_index(&self) -> usize {
+    fn p1_index(&self) -> VirtualAddress {
         self.number & 0o777
     }
 }
@@ -104,7 +102,7 @@ impl ActivePageTable {
         }
     }
 
-    pub unsafe fn new_at(address: usize) -> ActivePageTable {
+    pub unsafe fn new_at(address: VirtualAddress) -> ActivePageTable {
         ActivePageTable {
             mapper: Mapper::new_at(address),
         }
@@ -118,10 +116,10 @@ impl ActivePageTable {
             let backup = Frame::containing_address(cr3());
 
             // map temporary_page to current p4 table
-            let p4_table = temporary_page.map_table_frame(backup.clone(), self);
+            let p4_table = temporary_page.map_table_frame(backup, self);
 
             // overwrite recursive mapping
-            self.p4_mut()[511].set(inactive_table.p4_frame.clone(), EntryFlags::PRESENT | EntryFlags::WRITABLE);
+            self.p4_mut()[511].set(inactive_table.p4_frame, EntryFlags::PRESENT | EntryFlags::WRITABLE);
             tlb::flush_all();
 
             // execute f in the new context
@@ -154,9 +152,9 @@ pub struct InactivePageTable {
 impl InactivePageTable {
     pub fn new(frame: Frame, active_table: &mut ActivePageTable, temporary_page: &mut TemporaryPage) -> InactivePageTable {
         {
-            let table = temporary_page.map_table_frame(frame.clone(), active_table);
+            let table = temporary_page.map_table_frame(frame, active_table);
             table.zero();
-            table[511].set(frame.clone(), EntryFlags::PRESENT | EntryFlags::WRITABLE);
+            table[511].set(frame, EntryFlags::PRESENT | EntryFlags::WRITABLE);
         }
 
         temporary_page.unmap(active_table);
@@ -164,7 +162,7 @@ impl InactivePageTable {
     }
 }
 
-/// Maps the kernel structures in the higher half of virtual memory
+/// Maps the kernel structures in the higher half of virtual_memory memory
 pub fn setup_page_tables<A>(memory_map: &'static MemoryMapResponse, allocator: &mut A) -> ActivePageTable where A: FrameAllocator {
     serial_println!("mm: identity mapping kernel...");
     //let mut temporary_page = TemporaryPage::new(Page { number: 0x4000 + (*HHDM_OFFSET / PAGE_SIZE) }, allocator);
@@ -189,12 +187,10 @@ pub fn setup_page_tables<A>(memory_map: &'static MemoryMapResponse, allocator: &
         active_table.map_to(page, frame, EntryFlags::WRITABLE, allocator);
     }
 
-
-
     // Kernel mapping
     for kernel_section in memory_map.entries().iter().filter(|entry| entry.entry_type == EntryType::KERNEL_AND_MODULES) {
-        let start_frame = Frame::containing_address(kernel_section.base as usize);
-        let end_frame = Frame::containing_address((kernel_section.base + kernel_section.length) as usize);
+        let start_frame = Frame::containing_address(kernel_section.base as PhysicalAddress);
+        let end_frame = Frame::containing_address((kernel_section.base + kernel_section.length) as PhysicalAddress);
         for frame in Frame::range_inclusive(start_frame, end_frame) {
             let page = Page::containing_address(frame.start_address() + KERNEL_START_VMA_ADDRESS);
             active_table.map_to(page, frame, EntryFlags::WRITABLE, allocator);

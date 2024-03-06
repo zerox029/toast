@@ -3,9 +3,24 @@ use alloc::vec::Vec;
 use core::cmp::min;
 use limine::memory_map::{Entry, EntryType};
 use limine::response::MemoryMapResponse;
-use crate::memory::{Frame, FrameAllocator, PAGE_SIZE};
-use crate::memory::buddy_allocator::BlockType::{LeftBuddy, RightBuddy, TopLevel};
+use crate::memory::{Frame, PAGE_SIZE, PhysicalAddress};
+use crate::memory::physical_memory::FrameAllocator;
 
+// Linker script symbols marking ELF sections
+extern "C" {
+    static _stext: u8;
+    static _etext: u8;
+    static _srodata: u8;
+    static _erodata: u8;
+    static _sdata: u8;
+    static _edata: u8;
+    static _sdynamic: u8;
+    static _edynamic: u8;
+    static _sbss: u8;
+    static _ebss: u8;
+}
+
+// Maximum allocation size, this allocator cannot allocate blocks larger than 2^MAX_ORDER pages
 const MAX_ORDER: usize = 10;
 
 #[derive(Debug, Copy, Clone, Eq, PartialEq)]
@@ -23,13 +38,13 @@ pub struct BuddyAllocator {
 #[derive(Debug, Copy, Clone)]
 struct MemoryBlock {
     is_allocated: bool,
-    starting_address: usize,
+    starting_address: PhysicalAddress,
     size_class: usize,
     block_type: BlockType
 }
 
 impl MemoryBlock {
-    fn contains_address(&self, address: usize) -> bool {
+    fn contains_address(&self, address: PhysicalAddress) -> bool {
         address >= self.starting_address && address < self.starting_address + PAGE_SIZE * 2usize.pow(self.size_class as u32)
     }
 }
@@ -60,16 +75,18 @@ impl BuddyAllocator {
         }
     }
 
-    /// Used when transitioning from the linear allocator, this makes sure all frames allocated
-    /// by the previous allocator are marked as such in this one
-    pub fn set_allocated_frames(&mut self, frames: Vec<usize>) {
-        for frame_number in frames {
-            self.allocate_frame_at_address(frame_number * PAGE_SIZE);
+    /// Marks the specified frames as allocated. This is mostly used when transitioning
+    /// from the linear allocator to this one, but it is also occasionally used when hardware
+    /// specifies certain address like the AHCI controller
+    pub fn set_allocated_frames(&mut self, frames: Vec<PhysicalAddress>) {
+        for frame_address in frames {
+            self.allocate_frame_at_address(frame_address);
         }
     }
 
     /// Allocates 2^order contiguous frames
-    pub fn allocate_frames(&mut self, order: usize) -> Option<usize> {
+    /// Returns the starting address of the allocated block wrapped in an Option
+    pub fn allocate_frames(&mut self, order: usize) -> Option<PhysicalAddress> {
         if order > MAX_ORDER {
             panic!("Cannot allocate more than {} contiguous frames", MAX_ORDER);
         }
@@ -86,7 +103,7 @@ impl BuddyAllocator {
     }
 
     /// Deallocates 2^order contiguous frames
-    pub fn deallocate_frames(&mut self, start_address: usize, order: usize) {
+    pub fn deallocate_frames(&mut self, start_address: PhysicalAddress, order: usize) {
         let memory_block = self.memory_blocks[order].iter_mut()
             .find(|block| block.starting_address == start_address);
 
@@ -102,11 +119,11 @@ impl BuddyAllocator {
             memory_block.is_allocated = false;
 
             // Merge only if block is a buddy
-            if memory_block.block_type == TopLevel {
+            if memory_block.block_type == BlockType::TopLevel {
                 return;
             }
 
-            let buddy_address = if memory_block.block_type == LeftBuddy {
+            let buddy_address = if memory_block.block_type == BlockType::LeftBuddy {
                 memory_block.starting_address + PAGE_SIZE * 2usize.pow(memory_block.size_class as u32)
             } else {
                 memory_block.starting_address - PAGE_SIZE * 2usize.pow(memory_block.size_class as u32)
@@ -141,7 +158,7 @@ impl BuddyAllocator {
 
     /// Allocates a single frame at a given address. This is mostly used when transitioning from
     /// the linear allocator to this one.
-    pub fn allocate_frame_at_address(&mut self, address: usize) -> Option<usize> {
+    fn allocate_frame_at_address(&mut self, address: PhysicalAddress) -> Option<PhysicalAddress> {
         if self.memory_blocks[0].iter().any(|block| block.is_allocated && block.starting_address == address) {
             panic!("frame already allocated");
         }
@@ -157,7 +174,7 @@ impl BuddyAllocator {
         let current_block = current_block.expect("could not allocate memory");
         current_block.is_allocated = true;
 
-        let mut current_block_clone = current_block.clone();
+        let mut current_block_clone = *current_block;
 
         while current_block_clone.size_class > 0 {
             let buddy_size_class = current_block_clone.size_class - 1;
@@ -166,14 +183,14 @@ impl BuddyAllocator {
                 is_allocated: false,
                 starting_address: current_block_clone.starting_address,
                 size_class: buddy_size_class,
-                block_type: LeftBuddy
+                block_type: BlockType::LeftBuddy
             };
 
             let mut right_buddy = MemoryBlock {
                 is_allocated: false,
                 starting_address: current_block_clone.starting_address + PAGE_SIZE * 2usize.pow(buddy_size_class as u32),
                 size_class: buddy_size_class,
-                block_type: RightBuddy,
+                block_type: BlockType::RightBuddy,
             };
 
             if left_buddy.contains_address(address) {
@@ -196,40 +213,40 @@ impl BuddyAllocator {
     }
 
     fn map_area(area: &Entry, memory_blocks: &mut MemoryBlocks) {
-        let mut block_start_address = area.base;
-        let mut block_end_address = block_start_address as usize + PAGE_SIZE * 2usize.pow(MAX_ORDER as u32);
+        let mut block_start_address = area.base as PhysicalAddress;
+        let mut block_end_address = block_start_address + PAGE_SIZE * 2usize.pow(MAX_ORDER as u32);
 
-        while block_start_address < area.base + area.length {
+        while block_start_address < (area.base + area.length) as PhysicalAddress {
             let mut current_order = MAX_ORDER as u32;
 
             // Find the largest block that fits
-            while block_end_address > (area.base + area.length) as usize {
+            while block_end_address > (area.base + area.length) as PhysicalAddress {
                 // If no block order fits, no more blocks can be added for this area
                 if current_order == 0 {
                     return;
                 }
 
                 current_order -= 1;
-                block_end_address = block_start_address as usize + PAGE_SIZE * 2usize.pow(current_order);
+                block_end_address = block_start_address + PAGE_SIZE * 2usize.pow(current_order);
             }
 
             // Add the block to its corresponding list
             memory_blocks[current_order as usize].push_back(MemoryBlock {
                 is_allocated: false,
-                starting_address: block_start_address as usize,
+                starting_address: block_start_address,
                 size_class: current_order as usize,
-                block_type: TopLevel
+                block_type: BlockType::TopLevel
             });
 
             // Move on to the next block
-            block_start_address += (PAGE_SIZE * 2usize.pow(current_order)) as u64;
-            block_end_address = block_start_address as usize + PAGE_SIZE * 2usize.pow(MAX_ORDER as u32);
+            block_start_address += (PAGE_SIZE * 2usize.pow(current_order)) as PhysicalAddress;
+            block_end_address = block_start_address + PAGE_SIZE * 2usize.pow(MAX_ORDER as u32);
         }
     }
 
     /// Split a 2^order sized block into two 2^order-1 sized blocks, and sets the first one as allocated and returns it.
     /// The created blocks are added to the free_areas array at index order-1 and the original block is marked as allocated.
-    fn split_block(&mut self, order: usize) -> Option<usize> {
+    fn split_block(&mut self, order: usize) -> Option<PhysicalAddress> {
         if order == 0 {
             panic!("cannot split block further");
         }
@@ -245,7 +262,7 @@ impl BuddyAllocator {
         let current_block = first_free_block.expect("could not allocate memory");
         current_block.is_allocated = true;
 
-        let mut current_block_clone = current_block.clone();
+        let mut current_block_clone = *current_block;
 
         // Repeatedly split until we get to the desired size
         while current_block_clone.size_class >= order {
@@ -255,14 +272,14 @@ impl BuddyAllocator {
                 is_allocated: true,
                 starting_address: current_block_clone.starting_address,
                 size_class: buddy_size_class,
-                block_type: LeftBuddy
+                block_type: BlockType::LeftBuddy
             };
 
             let right_buddy = MemoryBlock {
                 is_allocated: false,
                 starting_address: current_block_clone.starting_address + PAGE_SIZE * 2usize.pow(buddy_size_class as u32),
                 size_class: buddy_size_class,
-                block_type: RightBuddy
+                block_type: BlockType::RightBuddy
             };
 
             // Add the two buddies to the linked list

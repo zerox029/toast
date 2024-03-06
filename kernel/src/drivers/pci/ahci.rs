@@ -13,8 +13,9 @@ use core::ffi::c_void;
 use core::mem::size_of;
 use core::ptr;
 use crate::drivers::pci::{find_all_pci_devices, PCIDevice};
-use crate::memory::{Frame, MemoryManager};
-use crate::memory::paging::entry::EntryFlags;
+use crate::memory::{MemoryManager, PhysicalAddress};
+use crate::memory::physical_memory::Frame;
+use crate::memory::virtual_memory::paging::entry::EntryFlags;
 use crate::utils::bitutils::is_nth_bit_set;
 
 const SATA_SIG_ATA: u32     = 0x00000101;   // SATA drive
@@ -245,10 +246,10 @@ struct AHCIIdentifyResponse {
     config: u16,      /* lots of obsolete bit flags */
     cyls: u16,      /* obsolete */
     reserved2: u16,   /* special config */
-    heads: u16,      /* "physical" heads */
+    heads: u16,      /* "physical_memory" heads */
     track_bytes: u16,   /* unformatted bytes per track */
     sector_bytes: u16,   /* unformatted bytes per sector */
-    sectors: u16,   /* "physical" sectors per track */
+    sectors: u16,   /* "physical_memory" sectors per track */
     vendor0: u16,   /* vendor unique */
     vendor1: u16,   /* vendor unique */
     vendor2: u16,   /* vendor unique */
@@ -345,7 +346,7 @@ struct AHCIIdentifyResponse {
     media_serial: [u8; 60], /* words 176-205 Current Media serial number */
     sct_cmd_transport: u16, /* SCT Command Transport */
     words207_208: [u16; 2], /* reserved */
-    block_align: u16, /* Alignement of logical blocks in larger physical blocks */
+    block_align: u16, /* Alignement of logical blocks in larger physical_memory blocks */
     wrv_sec_count: u32, /* Write-Read-Verify sector count mode 3 only */
     verf_sec_count: u32, /* Verify Sector count mode 2 only */
     nv_cache_capability: u16, /* NV Cache capabilities */
@@ -383,8 +384,8 @@ impl AHCIController {
     fn new(pci_device: PCIDevice) -> Self {
         // Memory map HBA registers as uncacheable.
         let bar5 = pci_device.bar5(0);
-        let start_frame = Frame::containing_address(bar5 as usize);
-        let end_frame = Frame::containing_address(bar5 as usize + 0x10FF);
+        let start_frame = Frame::containing_address(bar5 as PhysicalAddress);
+        let end_frame = Frame::containing_address(bar5 as PhysicalAddress + 0x10FF);
         for frame in Frame::range_inclusive(start_frame, end_frame) {
             MemoryManager::instance().lock().pmm_identity_map(frame, EntryFlags::WRITABLE | EntryFlags::NO_CACHE);
         }
@@ -465,14 +466,14 @@ impl AHCIDevice {
             return 0;
         }
 
-        let read_buffer_address = MemoryManager::instance().lock().pmm_alloc(byte_count as usize, EntryFlags::WRITABLE)
+        let read_buffer_address = MemoryManager::pmm_alloc(byte_count as usize, EntryFlags::WRITABLE)
             .expect("ahci: could not allocate the memory for device read");
 
         let read_sectors = self.issue_read(start_block, block_count, read_buffer_address as *mut c_void);
 
         unsafe { ptr::copy_nonoverlapping((read_buffer_address + (byte_offset % sector_size) as usize) as *const c_void, buffer, byte_count as usize); }
 
-        MemoryManager::instance().lock().pmm_free(byte_count as usize, read_buffer_address);
+        MemoryManager::pmm_free(byte_count as usize, read_buffer_address);
 
         read_sectors - read_sectors.abs_diff(byte_count as usize)
     }
@@ -485,7 +486,7 @@ impl AHCIDevice {
         let block_count = byte_count.div_ceil(sector_size);
 
         let write_buffer_address = {
-            MemoryManager::instance().lock().pmm_alloc(byte_count as usize, EntryFlags::WRITABLE)
+            MemoryManager::pmm_alloc(byte_count as usize, EntryFlags::WRITABLE)
                 .expect("ahci: could not allocate the memory for device write")
         };
 
@@ -500,7 +501,7 @@ impl AHCIDevice {
 
         self.issue_write(start_block, block_count, write_buffer_address as *mut c_void);
 
-        MemoryManager::instance().lock().pmm_free(byte_count as usize, write_buffer_address);
+        MemoryManager::pmm_free(byte_count as usize, write_buffer_address);
 
         //written_sectors - written_sectors.abs_diff(byte_count as usize)
     }
@@ -528,6 +529,7 @@ impl AHCIDevice {
             command_pointer[1] = 1 << 7;  // flags
             command_pointer[2] = 0xEC;  // device
         }
+
 
         self.init_prdt(command_number);
         self.issue_command(command_number);
@@ -758,7 +760,7 @@ pub fn init() -> Vec<AHCIDevice> {
 }
 
 fn init_port(controller: &AHCIController, port_index: usize, port_address: usize) -> Option<AHCIDevice> {
-    let mut ahci_device = AHCIDevice::new(controller.clone(), port_index, port_address); // TODO: Allocate on heap instead of cloning
+    let mut ahci_device = AHCIDevice::new(*controller, port_index, port_address); // TODO: Allocate on heap instead of cloning
 
     match ahci_device.port_registers.sig {
         SATA_SIG_ATA => ok!("ahci: sata drive found on port {}", port_index),
@@ -771,7 +773,7 @@ fn init_port(controller: &AHCIController, port_index: usize, port_address: usize
     // TODO: Allocate memory for these more efficiently, no need to allocate a new frame every time
     // Allocate physical memory for the command list
     let command_list_base = {
-        MemoryManager::instance().lock().pmm_alloc(1, EntryFlags::WRITABLE | EntryFlags::NO_CACHE)
+        MemoryManager::pmm_alloc(1, EntryFlags::WRITABLE | EntryFlags::NO_CACHE)
             .unwrap_or_else(|| panic!("ahci: could not allocate the memory for the command list on port {}", port_index))
     };
 
@@ -784,7 +786,7 @@ fn init_port(controller: &AHCIController, port_index: usize, port_address: usize
         let command_header = unsafe{ &mut *(header_address as *mut CommandHeader) };
 
         let command_table_base_address = {
-            MemoryManager::instance().lock().pmm_alloc(1, EntryFlags::WRITABLE | EntryFlags::NO_CACHE)
+            MemoryManager::pmm_alloc(1, EntryFlags::WRITABLE | EntryFlags::NO_CACHE)
                 .unwrap_or_else(|| panic!("ahci: could not allocate the memory for the command table {} on port {}", i, port_index))
         };
 
@@ -795,7 +797,7 @@ fn init_port(controller: &AHCIController, port_index: usize, port_address: usize
 
     // Allocate physical memory for the received FIS
     let fis_base_base_address = {
-        MemoryManager::instance().lock().pmm_alloc(1, EntryFlags::WRITABLE | EntryFlags::NO_CACHE)
+        MemoryManager::pmm_alloc(1, EntryFlags::WRITABLE | EntryFlags::NO_CACHE)
             .unwrap_or_else(|| panic!("ahci: could not allocate the memory for the FIS on port {}", port_index))
     };
 
@@ -806,16 +808,16 @@ fn init_port(controller: &AHCIController, port_index: usize, port_address: usize
     ahci_device.port_registers.cmd |= (1 << 0) | (1 << 4);
 
     let identity_address = {
-        MemoryManager::instance().lock().pmm_alloc(size_of::<AHCIIdentifyResponse>(), EntryFlags::WRITABLE | EntryFlags::NO_CACHE)
+        MemoryManager::pmm_alloc(size_of::<AHCIIdentifyResponse>(), EntryFlags::WRITABLE | EntryFlags::NO_CACHE)
             .expect("ahci: could not allocate the memory for device identification")
     };
 
     ahci_device.issue_identify(identity_address as *mut AHCIIdentifyResponse);
 
     let sata_identify = unsafe{&*(identity_address as *mut AHCIIdentifyResponse)};
-    ahci_device.identity = Some(sata_identify.clone());
+    ahci_device.identity = Some(*sata_identify);
 
-    MemoryManager::instance().lock().pmm_free(1, identity_address);
+    MemoryManager::pmm_free(1, identity_address);
 
     Some(ahci_device)
 }

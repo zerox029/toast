@@ -1,11 +1,12 @@
 use core::arch::asm;
 use core::ptr::Unique;
-use crate::memory::{Frame, FrameAllocator, PAGE_SIZE};
-use crate::memory::paging::table::{Level4, Table};
-use crate::memory::paging::{ENTRY_COUNT, Page, PhysicalAddress, VirtualAddress};
-use crate::memory::paging::entry::EntryFlags;
-use crate::{HHDM_OFFSET};
+use crate::memory::{Frame, PAGE_SIZE, PhysicalAddress, VirtualAddress};
+use crate::memory::virtual_memory::paging::table::{Level4, Table};
+use crate::memory::virtual_memory::paging::{ENTRY_COUNT, Page};
+use crate::memory::virtual_memory::paging::entry::EntryFlags;
+use crate::HHDM_OFFSET;
 use crate::arch::x86_64::registers::cr3;
+use crate::memory::physical_memory::FrameAllocator;
 
 pub struct Mapper {
     p4: Unique<Table<Level4>>,
@@ -20,8 +21,8 @@ impl Mapper {
         }
     }
 
-    pub unsafe fn new_at(address: usize) -> Mapper {
-        let p4_table: *mut Table<Level4> = (address) as *mut _;
+    pub unsafe fn new_at(address: VirtualAddress) -> Mapper {
+        let p4_table: *mut Table<Level4> = address as *mut _;
 
         Mapper {
             p4: Unique::new_unchecked(p4_table),
@@ -36,7 +37,7 @@ impl Mapper {
         unsafe { self.p4.as_mut() }
     }
 
-    /// Translates a virtual address to the corresponding physical address.
+    /// Translates a virtual_memory address to the corresponding physical_memory address.
     /// Returns `None` if the address is not mapped.
     pub fn translate(&self, virtual_address: VirtualAddress) -> Option<PhysicalAddress> {
         let offset = virtual_address % PAGE_SIZE;
@@ -103,8 +104,8 @@ impl Mapper {
         self.map_to(page, frame, flags, allocator);
     }
 
-    /// Identity map the given frame with the provided flags such that its virtual address corresponds
-    /// to its physical address. The `FrameAllocator` is used to create new page tables if needed.
+    /// Identity map the given frame with the provided flags such that its virtual_memory address corresponds
+    /// to its physical_memory address. The `FrameAllocator` is used to create new page tables if needed.
     pub fn identity_map<A>(&mut self, frame: Frame, flags: EntryFlags, allocator: &mut A) where A: FrameAllocator {
         let page = Page::containing_address(frame.start_address());
         self.map_to(page, frame, flags, allocator);

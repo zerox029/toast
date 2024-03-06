@@ -1,4 +1,3 @@
-use crate::arch::multiboot2::BootInformation;
 use crate::utils::any_as_u8_slice;
 
 pub enum Rsdp {
@@ -44,7 +43,8 @@ trait RootSystemDescriptorPointer {}
 impl RootSystemDescriptorPointer for RootSystemDescriptorPointerV1 {}
 impl RootSystemDescriptorPointer for RootSystemDescriptorPointerV2 {}
 
-pub fn find_rsdp(boot_information: &BootInformation) -> Result<Rsdp, &'static str> {
+pub fn find_rsdp() -> Result<Rsdp, &'static str> {
+    /*
     let rsdp_v2 = boot_information.acpi_new_rsdp().map(|rsdp| &rsdp.rsdp_v2);
 
     // V2
@@ -70,7 +70,8 @@ pub fn find_rsdp(boot_information: &BootInformation) -> Result<Rsdp, &'static st
         else {
             Err("ACPI RSDP tag is required...")
         }
-    }
+    }*/
+    todo!("Reimplement this");
 }
 
 fn validate_rsdp_checksum<T: RootSystemDescriptorPointer>(rsdp: &T)-> bool {

@@ -31,7 +31,7 @@ use crate::drivers::ps2::PS2DeviceType;
 use crate::fs::ext2::mount_filesystem;
 use crate::graphics::framebuffer::Writer;
 use crate::interrupts::{INTERRUPT_CONTROLLER, InterruptController};
-use crate::memory::MemoryManager;
+use crate::memory::{MemoryManager, VirtualAddress};
 use crate::task::keyboard::print_key_inputs;
 use crate::task::executor::Executor;
 use crate::task::Task;
@@ -47,10 +47,10 @@ mod task;
 mod fs;
 mod serial;
 
-pub const KERNEL_START_VMA_ADDRESS: usize = 0xFFFFFFFF80000000;
+pub const KERNEL_START_VMA_ADDRESS: VirtualAddress = 0xFFFFFFFF80000000;
 
 lazy_static! {
-    pub static ref HHDM_OFFSET: usize = HHDM_REQUEST.get_response().expect("could not retrieve the HHDM info").offset() as usize;
+    pub static ref HHDM_OFFSET: VirtualAddress = HHDM_REQUEST.get_response().expect("could not retrieve the HHDM info").offset() as usize;
 }
 
 pub static BASE_REVISION: BaseRevision = BaseRevision::new();
@@ -61,7 +61,7 @@ pub static HHDM_REQUEST: HhdmRequest = HhdmRequest::new();
 
 #[no_mangle]
 #[allow(clippy::missing_safety_doc)]
-pub unsafe extern fn _start() {
+unsafe extern fn _start() {
     assert!(BASE_REVISION.is_supported());
 
     init();
@@ -89,8 +89,9 @@ unsafe fn init() {
     let mut ahci_devices = drivers::pci::ahci::init();
     let fs = mount_filesystem(&mut ahci_devices[0]);
 
-    println!("Reading file /files/files.txt...");
-    let file = fs.get_file_contents(&mut ahci_devices[0], "/files/file.txt").unwrap();
+    let file_name = "/files/file.txt";
+    println!("Reading file {}...", file_name);
+    let file = fs.get_file_contents(&mut ahci_devices[0], file_name).unwrap_or_else(|| panic!("could not find the file {}", file_name));
     let string_content = core::str::from_utf8(file.as_slice()).expect("Failed to read file");
     println!("{}", string_content);
 
@@ -105,7 +106,7 @@ unsafe fn init() {
         }
     }
 
-    println!(">");
+    print!(">");
 
     executor.run();
 }
@@ -131,14 +132,14 @@ fn hcf() -> ! {
 fn print_memory_map() {
     MEMORY_MAP_REQUEST.get_response().unwrap().entries().iter().for_each(|entry| {
         match entry.entry_type {
-            EntryType::USABLE => serial_println!("usable entry of size 0x{:X} at {:X}", entry.length, entry.base),
-            EntryType::RESERVED => serial_println!("reserved entry of size 0x{:X} at {:X}", entry.length, entry.base),
-            EntryType::ACPI_RECLAIMABLE => serial_println!("acpi recl entry of size 0x{:X} at {:X}", entry.length, entry.base),
-            EntryType::ACPI_NVS => serial_println!("acpi nvs entry of size 0x{:X} at {:X}", entry.length, entry.base),
-            EntryType::BAD_MEMORY => serial_println!("bad memory entry of size 0x{:X} at {:X}", entry.length, entry.base),
-            EntryType::BOOTLOADER_RECLAIMABLE => serial_println!("bootloader recl entry of size 0x{:X} at {:X}", entry.length, entry.base),
-            EntryType::KERNEL_AND_MODULES => serial_println!("kernel entry of size 0x{:X} at {:X}", entry.length, entry.base),
-            EntryType::FRAMEBUFFER => serial_println!("framebuffer entry of size 0x{:X} at {:X}", entry.length, entry.base),
+            EntryType::USABLE => serial_println!("usable entry from 0x{:X} to {:X}", entry.base, entry.base + entry.length),
+            EntryType::RESERVED => serial_println!("reserved entry from 0x{:X} to {:X}",  entry.base, entry.base + entry.length),
+            EntryType::ACPI_RECLAIMABLE => serial_println!("acpi recl entry from 0x{:X} to {:X}",  entry.base, entry.base + entry.length),
+            EntryType::ACPI_NVS => serial_println!("acpi nvs entry from 0x{:X} to {:X}",  entry.base, entry.base + entry.length),
+            EntryType::BAD_MEMORY => serial_println!("bad memory entry from 0x{:X} to {:X}",  entry.base, entry.base + entry.length),
+            EntryType::BOOTLOADER_RECLAIMABLE => serial_println!("bootloader recl entry from 0x{:X} to {:X}",  entry.base, entry.base + entry.length),
+            EntryType::KERNEL_AND_MODULES => serial_println!("kernel entry from 0x{:X} to {:X}",  entry.base, entry.base + entry.length),
+            EntryType::FRAMEBUFFER => serial_println!("framebuffer entry from 0x{:X} to {:X}",  entry.base, entry.base + entry.length),
             _ => ()
         }
     });

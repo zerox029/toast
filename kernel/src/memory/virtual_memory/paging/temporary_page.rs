@@ -1,7 +1,8 @@
-use crate::memory::{Frame, FrameAllocator};
-use crate::memory::paging::entry::EntryFlags;
-use crate::memory::paging::table::{Level1, Table};
-use super::{Page, VirtualAddress, ActivePageTable};
+use crate::memory::{Frame, VirtualAddress};
+use crate::memory::physical_memory::FrameAllocator;
+use crate::memory::virtual_memory::paging::entry::EntryFlags;
+use crate::memory::virtual_memory::paging::table::{Level1, Table};
+use super::{ActivePageTable, Page};
 
 pub struct TemporaryPage {
     page: Page,

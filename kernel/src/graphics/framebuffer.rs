@@ -70,6 +70,8 @@ impl Writer {
             .get_response().expect("could not retrieve the framebuffer")
             .framebuffers().next().expect("could not retrieve the framebuffer");
 
+        serial_println!("Toast running on {}x{}", framebuffer.width(), framebuffer.height());
+
         let buffer_width = framebuffer.width() as usize / FONT_WIDTH;
         let buffer_height = framebuffer.height() as usize / FONT_HEIGHT;
 
@@ -147,7 +149,7 @@ impl Writer {
     }
 }
 
-impl core::fmt::Write for Writer {
+impl Write for Writer {
     fn write_str(&mut self, s: &str) -> core::fmt::Result {
         for byte in s.bytes() {
             self.write_char(ScreenChar::new(byte, self.color_code));

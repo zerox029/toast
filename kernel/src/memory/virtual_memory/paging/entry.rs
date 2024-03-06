@@ -1,8 +1,7 @@
 use bitflags::bitflags;
-use crate::arch::multiboot2::structures::{ElfSectionHeaderFlags, ElfSectionHeader};
-use crate::memory::Frame;
+use crate::memory::{Frame, VirtualAddress};
 
-pub struct Entry(pub(crate) u64);
+pub struct Entry(pub(crate) VirtualAddress);
 
 impl Entry {
     pub fn is_unused(&self) -> bool {
@@ -20,7 +19,7 @@ impl Entry {
     pub fn pointed_frame(&self) -> Option<Frame> {
         if self.flags().contains(EntryFlags::PRESENT) {
             Some(Frame::containing_address(
-                self.0 as usize & 0x000fffff_fffff000
+                self.0 & 0x000fffff_fffff000
             ))
         } else {
             None
@@ -29,13 +28,13 @@ impl Entry {
 
     pub fn set(&mut self, frame: Frame, flags: EntryFlags) {
         assert!(frame.start_address() & !0x000fffff_fffff000 == 0);
-        self.0 = (frame.start_address() as u64) | flags.bits();
+        self.0 = frame.start_address() | flags.bits();
     }
 }
 
 bitflags! {
     #[derive(Copy, Clone)]
-    pub struct EntryFlags: u64 {
+    pub struct EntryFlags: usize {
         const PRESENT =         1 << 0;
         const WRITABLE =        1 << 1;
         const USER_ACCESSIBLE = 1 << 2;
@@ -50,6 +49,7 @@ bitflags! {
 }
 
 impl EntryFlags {
+    /*
     pub fn from_elf_section_flags(section: &ElfSectionHeader) -> EntryFlags {
         let mut flags = EntryFlags::empty();
 
@@ -67,5 +67,5 @@ impl EntryFlags {
         flags |= EntryFlags::WRITABLE;
 
         flags
-    }
+    }*/
 }

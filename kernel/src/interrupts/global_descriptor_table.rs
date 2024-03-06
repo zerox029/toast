@@ -3,6 +3,7 @@ use core::arch::{asm};
 use core::mem::size_of;
 use core::pin::Pin;
 use bitfield::bitfield;
+use crate::memory::VirtualAddress;
 
 bitfield! {
     #[derive(Default)]
@@ -55,7 +56,7 @@ pub struct Tss {
 #[repr(C, packed)]
 pub struct GdtDescriptor {
     size: u16,
-    offset: usize,
+    offset: VirtualAddress,
 }
 
 #[repr(C)]
@@ -109,7 +110,7 @@ impl GlobalDescriptorTable {
         gdt.tss_descriptor.set_base_high32(tss_address >> 32 & 0xFFFFFFFF);
     }
 
-    fn load_gdt(offset: usize) {
+    fn load_gdt(offset: VirtualAddress) {
         // Update the GDT pointer
         let updated_gdtr = GdtDescriptor {
             size: size_of::<GlobalDescriptorTable>() as u16 - 1,
@@ -160,7 +161,7 @@ pub fn jump_to_user_mode() {
         asm! {
             "push {}
             iretq",
-            in(reg) test_user_function as usize,
+            in(reg) test_user_function as VirtualAddress,
         }
     }
 }

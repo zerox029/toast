@@ -1,7 +1,8 @@
 use alloc::vec::Vec;
 use limine::memory_map::{Entry, EntryType};
 use limine::response::MemoryMapResponse;
-use crate::memory::{Frame, FrameAllocator};
+use crate::memory::{Frame, PhysicalAddress};
+use crate::memory::physical_memory::FrameAllocator;
 
 /// The amount of simultaneous frames that can be allocated with this allocator. A hard limit is needed because
 /// this allocator is used before the heap is initialized
@@ -9,14 +10,14 @@ const ALLOCATION_LIMIT: usize = 300;
 
 #[derive(Copy, Clone)]
 pub struct FrameStatus {
-    frame_id: Option<usize>,
+    frame_address: Option<PhysicalAddress>,
     used: bool,
 }
 
 impl FrameStatus {
     fn default() -> Self {
         Self {
-            frame_id: None,
+            frame_address: None,
             used: false,
         }
     }
@@ -38,7 +39,7 @@ impl FrameAllocator for LinearFrameAllocator {
         // Look for a previously allocated frame that has been freed
         for frame_number in 0..self.allocated_frames_count {
             if !self.allocated_frames[frame_number].used {
-                return Some(Frame { number: self.allocated_frames[frame_number].frame_id.unwrap() });
+                return Some(Frame { number: self.allocated_frames[frame_number].frame_address.unwrap() });
             }
         }
 
@@ -46,8 +47,8 @@ impl FrameAllocator for LinearFrameAllocator {
             let frame = Frame{ number: self.next_free_frame.number };
 
             let current_area_last_frame = {
-                let address = area.base + area.length - 1;
-                Frame::containing_address(address as usize)
+                let address = (area.base + area.length - 1) as PhysicalAddress;
+                Frame::containing_address(address)
             };
 
             // Move to the next area if all frames in the current area are used
@@ -60,7 +61,7 @@ impl FrameAllocator for LinearFrameAllocator {
             else {
                 self.next_free_frame.number += 1;
 
-                self.allocated_frames[self.allocated_frames_count] = FrameStatus { frame_id: Some(frame.number), used: true };
+                self.allocated_frames[self.allocated_frames_count] = FrameStatus { frame_address: Some(frame.start_address()), used: true };
                 self.allocated_frames_count += 1;
 
                 Some(frame)
@@ -73,7 +74,7 @@ impl FrameAllocator for LinearFrameAllocator {
 
     fn deallocate_frame(&mut self, frame: Frame) {
         for frame_number in 0..self.allocated_frames_count {
-            if self.allocated_frames[frame_number].frame_id.unwrap() == frame.number {
+            if self.allocated_frames[frame_number].frame_address.unwrap() == frame.number {
                 self.allocated_frames[frame_number].used = false;
             }
         }
@@ -98,25 +99,25 @@ impl LinearFrameAllocator {
     fn choose_next_area(&mut self) {
         self.current_area = self.memory_map.entries().iter().filter(|area| {
             area.entry_type == EntryType::USABLE && {
-                let end_address = area.base + area.length - 1;
-                Frame::containing_address(end_address as usize) >= self.next_free_frame
+                let end_address = (area.base + area.length - 1) as PhysicalAddress;
+                Frame::containing_address(end_address) >= self.next_free_frame
             }
-        }).min_by_key(|area| area.base).map(|area| area).copied();
+        }).min_by_key(|area| area.base).copied();
 
         // Set the new next free frame
         if let Some(area) = self.current_area {
-            let area_start_frame = Frame::containing_address(area.base as usize);
+            let area_start_frame = Frame::containing_address(area.base as PhysicalAddress);
             if self.next_free_frame < area_start_frame {
                 self.next_free_frame = area_start_frame;
             }
         }
     }
 
-    pub fn allocated_frames(&self) -> Vec<usize> {
+    pub fn allocated_frames(&self) -> Vec<PhysicalAddress> {
         self.allocated_frames
             .iter()
-            .filter(|frame| frame.used && frame.frame_id.is_some())
-            .map(|frame| frame.frame_id.unwrap())
+            .filter(|frame| frame.used && frame.frame_address.is_some())
+            .map(|frame| frame.frame_address.unwrap())
             .collect()
     }
 }

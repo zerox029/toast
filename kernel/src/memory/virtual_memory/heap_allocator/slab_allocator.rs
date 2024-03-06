@@ -1,6 +1,7 @@
 use core::alloc::{GlobalAlloc, Layout};
 use core::{mem, ptr};
 use core::ptr::NonNull;
+use crate::memory::VirtualAddress;
 use super::Locked;
 
 const BLOCK_SIZES: &[usize] = &[8, 16, 32, 64, 128, 256, 512, 1024, 2048];
@@ -25,7 +26,7 @@ impl SlabAllocator {
         }
     }
 
-    pub unsafe fn init(&mut self, heap_start: usize, heap_size: usize) {
+    pub unsafe fn init(&mut self, heap_start: VirtualAddress, heap_size: usize) {
         self.fallback_allocator.init(heap_start, heap_size);
     }
 

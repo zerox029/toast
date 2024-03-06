@@ -24,26 +24,34 @@ SECTIONS
     . = 0xffffffff80000000;
 
     .text : {
-        *(.text .text.*)
+        _stext = .;
+        *(.text .text.*);
+        _etext = .;
     } :text
 
     /* Move to the next memory page for .rodata */
     . += CONSTANT(MAXPAGESIZE);
 
     .rodata : {
-        *(.rodata .rodata.*)
+        _srodata = .;
+        *(.rodata .rodata.*);
+        _erodata = .;
     } :rodata
 
     /* Move to the next memory page for .data */
     . += CONSTANT(MAXPAGESIZE);
 
     .data : {
-        *(.data .data.*)
+        _sdata = .;
+        *(.data .data.*);
+        _edata = .;
     } :data
 
     /* Dynamic section for relocations, both in its own PHDR and inside data PHDR */
     .dynamic : {
+        _sdynamic = .;
         *(.dynamic)
+        _edynamic = .;
     } :data :dynamic
 
     /* NOTE: .bss needs to be the last thing mapped to :data, otherwise lots of */
@@ -51,8 +59,10 @@ SECTIONS
     /* If you need, for example, .init_array and .fini_array, those should be placed */
     /* above this. */
     .bss : {
-        *(.bss .bss.*)
+        _sbss = .;
+        *(.bss .bss.*);
         *(COMMON)
+        _ebss = .;
     } :data
 
     /* Discard .note.* and .eh_frame since they may cause issues on some hosts. */

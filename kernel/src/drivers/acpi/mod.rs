@@ -1,13 +1,7 @@
 pub mod root_system_descriptor_pointer;
 pub mod acpi_tables;
 
-use crate::arch::multiboot2::BootInformation;
-use crate::drivers::acpi::root_system_descriptor_pointer::{find_rsdp, Rsdp};
-use crate::drivers::acpi::acpi_tables::{FixedACPIDescriptionTable, RootSystemDescriptorTable};
-use crate::memory::{Frame, MemoryManager};
-use crate::memory::paging::entry::EntryFlags;
-
-pub fn init_acpi(boot_info: &BootInformation) {
+pub fn init_acpi() {/*
     let rsdp = find_rsdp(boot_info).expect("Error finding RSDP");
 
     let rsdt_address = match rsdp {
@@ -19,5 +13,5 @@ pub fn init_acpi(boot_info: &BootInformation) {
     MemoryManager::instance().lock().pmm_identity_map(Frame::containing_address(rsdt_address as usize), EntryFlags::PRESENT);
 
     let fadt_address = rsdt.fadt_address().expect("Could not find FADT address");
-    let _fadt = FixedACPIDescriptionTable::from(fadt_address);
+    let _fadt = FixedACPIDescriptionTable::from(fadt_address);*/
 }

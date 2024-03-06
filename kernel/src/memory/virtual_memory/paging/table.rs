@@ -1,9 +1,9 @@
 use core::marker::PhantomData;
-use crate::memory::paging::ENTRY_COUNT;
-use crate::memory::paging::entry::{Entry, EntryFlags};
+use crate::memory::virtual_memory::paging::ENTRY_COUNT;
+use crate::memory::virtual_memory::paging::entry::{Entry, EntryFlags};
 use core::ops::{Index, IndexMut};
-use crate::memory::FrameAllocator;
 use crate::HHDM_OFFSET;
+use crate::memory::physical_memory::FrameAllocator;
 
 pub struct Table<L: TableLevel> {
     entries: [Entry; ENTRY_COUNT],
