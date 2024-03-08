@@ -3,6 +3,7 @@ use alloc::vec::Vec;
 use core::fmt::Write;
 use conquer_once::spin::OnceCell;
 use limine::framebuffer::Framebuffer;
+use rlibc::memcpy;
 use spin::Mutex;
 use crate::{FRAMEBUFFER_REQUEST, serial_println};
 use crate::graphics::fonts::{FONT, FONT_HEIGHT, FONT_WIDTH};
@@ -75,7 +76,7 @@ impl Writer {
         let buffer_width = framebuffer.width() as usize / FONT_WIDTH;
         let buffer_height = framebuffer.height() as usize / FONT_HEIGHT;
 
-        let screen_buffer = vec![vec![None; buffer_height]; buffer_width];
+        let screen_buffer = vec![vec![None; buffer_width]; buffer_height];
 
         let writer = Self {
             color_code: DEFAULT_COLOR_CODE,
@@ -106,7 +107,7 @@ impl Writer {
                 }
 
                 draw_char(screen_char, col, row);
-                self.screen_buffer[col][row] = Some(screen_char);
+                self.screen_buffer[row][col] = Some(screen_char);
             }
         }
     }
@@ -121,26 +122,42 @@ impl Writer {
     }
 
     fn clear_at(&mut self, col: usize, row: usize) {
-        let blank = ScreenChar {
-            ascii_character: b' ',
-            color_code: ColorCode::new(Rgb8(0xFFFFFF), Rgb8(0)),
-        };
+        if let Some(framebuffer_response) = FRAMEBUFFER_REQUEST.get_response() {
+            if let Some(framebuffer) = framebuffer_response.framebuffers().next() {
+                let empty_row = vec![0; FONT_WIDTH];
 
-        draw_char(blank, col, row);
-        self.screen_buffer[col][row] = None;
+                for pixel_row in 0..FONT_HEIGHT {
+                    let pixel_offset = ((row * FONT_HEIGHT) + pixel_row) * framebuffer.pitch() as usize + (col * FONT_WIDTH * 4);
+                    unsafe { memcpy(framebuffer.addr().add(pixel_offset), empty_row.as_ptr() as *const u8, empty_row.len() * 4); }
+                }
+
+                self.screen_buffer[row][col] = None;
+            }
+        }
     }
 
     fn clear_row(&mut self, row: usize) {
-        for col in 0..self.buffer_width {
-            self.clear_at(col, row);
+        if let Some(framebuffer_response) = FRAMEBUFFER_REQUEST.get_response() {
+            if let Some(framebuffer) = framebuffer_response.framebuffers().next() {
+                let empty_row = vec![0; self.buffer_width * FONT_WIDTH];
+
+                for pixel_row in 0..FONT_HEIGHT {
+                    let pixel_offset = ((row * FONT_HEIGHT) + pixel_row) * framebuffer.pitch() as usize;
+                    unsafe { memcpy(framebuffer.addr().add(pixel_offset), empty_row.as_ptr() as *const u8, empty_row.len() * 4); }
+                }
+
+                for col in 0..self.buffer_width {
+                    self.screen_buffer[row][col] = None;
+                }
+            }
         }
     }
 
     fn new_line(&mut self) {
         for row in 1..self.buffer_height {
             for col in 0..self.buffer_width {
-                let bottom_character = self.screen_buffer[col][row];
-                let top_character = self.screen_buffer[col][row - 1];
+                let bottom_character = self.screen_buffer[row][col];
+                let top_character = self.screen_buffer[row - 1][col];
 
                 if top_character != bottom_character {
                     if let Some(character) = bottom_character {
@@ -175,6 +192,7 @@ fn draw_char(screen_char: ScreenChar, column: usize, row: usize) {
             let glyph = FONT[screen_char.ascii_character as usize];
 
             for (cy, glyph) in glyph.iter().enumerate().take(FONT_HEIGHT) {
+                let mut scanrow: [u32; FONT_WIDTH] = [0; FONT_WIDTH];
                 for (cx, mask) in mask.iter().enumerate().take(FONT_WIDTH) {
                     let color = if glyph & mask == 0 {
                         screen_char.color_code.background
@@ -182,16 +200,16 @@ fn draw_char(screen_char: ScreenChar, column: usize, row: usize) {
                         screen_char.color_code.foreground
                     };
 
-                    display_pixel(&framebuffer, cx + column * FONT_WIDTH, cy + row * FONT_HEIGHT, color.0)
+                    scanrow[cx] = color.0;
                 }
+
+                let c = column * FONT_WIDTH;
+                let r = cy + row * FONT_HEIGHT;
+                let pixel_offset = r * framebuffer.pitch() as usize + c * 4;
+                unsafe { memcpy(framebuffer.addr().add(pixel_offset), scanrow.as_ptr() as *const u8, scanrow.len() * 4); }
             }
         }
     }
-}
-
-pub fn display_pixel(framebuffer: &Framebuffer, col: usize, row: usize, color: u32) {
-    let pixel_offset = row * framebuffer.pitch() as usize + col * 4;
-    unsafe { *(framebuffer.addr().add(pixel_offset) as *mut u32) = color; };
 }
 
 pub fn backspace() {

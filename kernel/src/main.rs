@@ -16,12 +16,14 @@
 extern crate downcast_rs;
 extern crate alloc;
 
+use alloc::{format, vec};
 use core::arch::asm;
 use core::panic::PanicInfo;
 use lazy_static::lazy_static;
 use limine::BaseRevision;
 use limine::memory_map::EntryType;
 use limine::request::{FramebufferRequest, HhdmRequest, MemoryMapRequest};
+use rlibc::memcpy;
 use x86_64::registers::model_specific::Efer;
 use x86_64::registers::control::{Cr0, Cr0Flags, EferFlags};
 use crate::drivers::cpuid::CPU_INFO;
@@ -29,7 +31,9 @@ use crate::drivers::ps2::init_ps2_controller;
 use crate::drivers::ps2::keyboard::PS2Keyboard;
 use crate::drivers::ps2::PS2DeviceType;
 use crate::fs::ext2::mount_filesystem;
-use crate::fs::vfs::Vfs;
+use drivers::fbdev::FrameBufferDevice;
+use crate::fs::Vfs;
+use crate::graphics::fonts::{FONT_HEIGHT, FONT_WIDTH};
 use crate::graphics::framebuffer_device::Writer;
 use crate::interrupts::{INTERRUPT_CONTROLLER, InterruptController};
 use crate::memory::{MemoryManager, VirtualAddress};
@@ -109,14 +113,9 @@ unsafe fn init() {
 
     Vfs::init();
 
-    let root = Vfs::root_directory().clone();
-    Vfs::add_child_node(root.clone(), "dev");
-
-    let dev = Vfs::find_child(root.clone(), "dev").unwrap();
-    Vfs::add_child_node(dev.clone(), "fb0");
-    let fb = Vfs::find_child(dev.clone(), "fb0").unwrap();
-
-    println!("Selected node path is: {}", Vfs::get_absolute_path(fb.clone()));
+    FRAMEBUFFER_REQUEST.get_response().expect("could not retrieve the frame buffer").framebuffers().for_each(|fbdev| {
+        FrameBufferDevice::register(&fbdev, format!("/dev/fb{}", 0));
+    });
 
     //print!(">");
 

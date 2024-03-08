@@ -10,12 +10,11 @@ A small hobby operating system written in Rust
 - ext2 file system 
 
 ## Dependencies
-- GRUB
 - QEMU
 
 ## Installation
 - Create a disk image
-    - `qemu-img create -f raw build/toast-disk.img 5G`
+    - `qemu-img create -f raw build/toast-disk.img 1G`
 - Partition disk image
     - `fdisk toast-disk.img`
 - Format disk image
