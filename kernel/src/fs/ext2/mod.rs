@@ -6,9 +6,12 @@ mod directory;
 
 use alloc::vec::Vec;
 use core::ops::ControlFlow;
+use crate::drivers::fbdev::FB_DEVICES;
 use crate::drivers::pci::ahci::AHCIDevice;
 use crate::fs::ext2::block::{Superblock};
 use crate::fs::ext2::inode::{Inode};
+use crate::fs::VfsNode;
+use crate::serial_println;
 
 const ROOT_INODE_ID: usize = 2;
 

@@ -5,7 +5,9 @@ use conquer_once::spin::OnceCell;
 use limine::framebuffer::Framebuffer;
 use rlibc::memcpy;
 use spin::Mutex;
-use crate::{FRAMEBUFFER_REQUEST, serial_println};
+use crate::{FRAMEBUFFER_REQUEST, panic, serial_println};
+use crate::drivers::fbdev::FB_DEVICES;
+use crate::fs::{Vfs, VfsNode};
 use crate::graphics::fonts::{FONT, FONT_HEIGHT, FONT_WIDTH};
 
 const DEFAULT_COLOR_CODE: ColorCode = ColorCode::new(Rgb8(0xFFFFFF), Rgb8(0));
@@ -67,14 +69,14 @@ impl Writer {
 
     /// This function is unsafe because it should only be called once the heap is set up
     pub unsafe fn init() {
-        let framebuffer = FRAMEBUFFER_REQUEST
-            .get_response().expect("could not retrieve the framebuffer")
-            .framebuffers().next().expect("could not retrieve the framebuffer");
+        if FB_DEVICES.lock().len() <= 0 {
+            panic!("no framebuffer found");
+        }
 
-        serial_println!("Toast running on {}x{}", framebuffer.width(), framebuffer.height());
+        let framebuffer = &FB_DEVICES.lock()[0];
 
-        let buffer_width = framebuffer.width() as usize / FONT_WIDTH;
-        let buffer_height = framebuffer.height() as usize / FONT_HEIGHT;
+        let buffer_width = framebuffer.screen_info.width as usize / FONT_WIDTH;
+        let buffer_height = framebuffer.screen_info.height as usize / FONT_HEIGHT;
 
         let screen_buffer = vec![vec![None; buffer_width]; buffer_height];
 
@@ -206,7 +208,7 @@ fn draw_char(screen_char: ScreenChar, column: usize, row: usize) {
                 let c = column * FONT_WIDTH;
                 let r = cy + row * FONT_HEIGHT;
                 let pixel_offset = r * framebuffer.pitch() as usize + c * 4;
-                unsafe { memcpy(framebuffer.addr().add(pixel_offset), scanrow.as_ptr() as *const u8, scanrow.len() * 4); }
+                FB_DEVICES.lock()[0].write(scanrow.as_ptr() as *const u8, scanrow.len() * 4, pixel_offset)
             }
         }
     }

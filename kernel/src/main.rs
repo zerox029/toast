@@ -17,6 +17,7 @@ extern crate downcast_rs;
 extern crate alloc;
 
 use alloc::{format, vec};
+use alloc::string::String;
 use core::arch::asm;
 use core::panic::PanicInfo;
 use lazy_static::lazy_static;
@@ -32,7 +33,8 @@ use crate::drivers::ps2::keyboard::PS2Keyboard;
 use crate::drivers::ps2::PS2DeviceType;
 use crate::fs::ext2::mount_filesystem;
 use drivers::fbdev::FrameBufferDevice;
-use crate::fs::Vfs;
+use crate::drivers::fbdev::FB_DEVICES;
+use crate::fs::{Vfs, VfsNode};
 use crate::graphics::fonts::{FONT_HEIGHT, FONT_WIDTH};
 use crate::graphics::framebuffer_device::Writer;
 use crate::interrupts::{INTERRUPT_CONTROLLER, InterruptController};
@@ -76,7 +78,14 @@ unsafe extern fn _start() {
 
 unsafe fn init() {
     MemoryManager::init(MEMORY_MAP_REQUEST.get_response().expect("could not retrieve the kernel address"));
+
+    FRAMEBUFFER_REQUEST.get_response().expect("could not retrieve the frame buffer").framebuffers().for_each(|fbdev| {
+        FrameBufferDevice::init(&fbdev, String::from("fb0"));
+    });
     Writer::init();
+
+    Vfs::init();
+    FrameBufferDevice::register_devices();
 
     info!("Toast version v0.0.1-x86_64");
     unsafe { CPU_INFO.lock().print_brand(); }
@@ -94,11 +103,12 @@ unsafe fn init() {
     let mut ahci_devices = drivers::pci::ahci::init();
     let fs = mount_filesystem(&mut ahci_devices[0]);
 
+    /*
     let file_name = "/files/file.txt";
     println!("Reading file {}...", file_name);
     let file = fs.get_file_contents(&mut ahci_devices[0], file_name).unwrap_or_else(|| panic!("could not find the file {}", file_name));
     let string_content = core::str::from_utf8(file.as_slice()).expect("Failed to read file");
-    println!("{}", string_content);
+    println!("{}", string_content);*/
 
     let ps2_devices = init_ps2_controller();
     let mut executor = Executor::new();
@@ -110,12 +120,6 @@ unsafe fn init() {
             INTERRUPT_CONTROLLER.lock().enable_keyboard_interrupts();
         }
     }
-
-    Vfs::init();
-
-    FRAMEBUFFER_REQUEST.get_response().expect("could not retrieve the frame buffer").framebuffers().for_each(|fbdev| {
-        FrameBufferDevice::register(&fbdev, format!("/dev/fb{}", 0));
-    });
 
     //print!(">");
 

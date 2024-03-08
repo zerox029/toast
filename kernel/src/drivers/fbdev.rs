@@ -2,30 +2,38 @@ use alloc::boxed::Box;
 use alloc::string::String;
 use alloc::sync::Arc;
 use alloc::vec::Vec;
-use core::ffi::c_void;
+use lazy_static::lazy_static;
 use limine::framebuffer::Framebuffer;
 use rlibc::memcpy;
 use spin::Mutex;
 use crate::fs::{Vfs, VfsNode, VfsNodeRef, VfsNodeWeakRef};
-use crate::memory::{PhysicalAddress, VirtualAddress};
+use crate::memory::{MemoryManager, PhysicalAddress, VirtualAddress};
+use crate::serial_println;
 
+lazy_static! {
+    pub static ref FB_DEVICES: Mutex<Vec<FrameBufferDevice>> = Mutex::new(Vec::new());
+}
+
+#[derive(Clone)]
 pub struct FrameBufferDevice {
     name: String,
     parent: Option<VfsNodeWeakRef>,
     children: Vec<VfsNodeRef>,
-    screen_info: FrameBufferScreenInfo,
+    pub screen_info: FrameBufferScreenInfo,
 }
 
+#[derive(Clone)]
 pub struct FrameBufferScreenInfo {
-    address: VirtualAddress,
-    width: u64,
-    height: u64,
-    pitch: u64,
-    bpp: u16,
+    pub address: VirtualAddress,
+    pub width: u64,
+    pub height: u64,
+    pub pitch: u64,
+    pub bpp: u16,
 }
 
 impl FrameBufferDevice {
-    pub fn register(framebuffer: &Framebuffer, name: String) {
+    /// Initialize a framebuffer device and add it to the list
+    pub fn init(framebuffer: &Framebuffer, name: String) {
         let screen_info = FrameBufferScreenInfo {
             address: framebuffer.addr() as PhysicalAddress,
             width: framebuffer.width(),
@@ -34,29 +42,41 @@ impl FrameBufferDevice {
             bpp: framebuffer.bpp(),
         };
 
-        let parent = Vfs::find_from_absolute_path("/dev").expect("fs: could not find /dev");
-        let fbdev = Arc::new(Mutex::new(Box::new(Self {
+        let device = Self {
             name,
-            parent: Some(Arc::downgrade(&parent)),
+            parent: None,
             children: Vec::new(),
             screen_info
-        }) as Box<dyn VfsNode + Send>));
+        };
 
-        Vfs::insert_child_node(parent, fbdev);
+        FB_DEVICES.lock().push(device);
+    }
+
+    /// Registers all framebuffer devices previously initialized by adding them to the vfs
+    pub fn register_devices() {
+        let parent = Vfs::find_from_absolute_path("/dev").expect("fs: could not find /dev");
+
+        let devices = FB_DEVICES.lock();
+        devices.iter().for_each(|device| {
+            serial_println!("{}", device.name);
+            // Not sure cloning is the best idea here
+            let fbdev = Arc::new(Mutex::new(Box::new(device.clone()) as Box<dyn VfsNode + Send>));
+            Vfs::insert_child_node(parent.clone(), fbdev);
+        });
     }
 }
 
 impl VfsNode for FrameBufferDevice {
     fn name(&self) -> &String {
-        todo!()
+        &self.name
     }
 
     fn parent(&self) -> &Option<VfsNodeWeakRef> {
-        todo!()
+        &self.parent
     }
 
     fn children(&mut self) -> &mut Vec<VfsNodeRef> {
-        todo!()
+        &mut self.children
     }
 
     fn open(&self) {
