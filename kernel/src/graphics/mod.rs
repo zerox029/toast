@@ -1,3 +1,3 @@
 #[macro_use]
-pub mod framebuffer;
+pub mod framebuffer_device;
 pub mod fonts;

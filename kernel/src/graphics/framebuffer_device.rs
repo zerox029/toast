@@ -88,7 +88,7 @@ impl Writer {
         INSTANCE.init_once(|| Mutex::new(writer));
     }
 
-    pub fn write_char(&mut self, screen_char: ScreenChar) {
+    fn write_char(&mut self, screen_char: ScreenChar) {
         let row = self.buffer_height - 1;
         let col = self.column_position;
 
@@ -97,7 +97,7 @@ impl Writer {
         self.write_at(screen_char, col, row);
     }
 
-    pub fn write_at(&mut self, screen_char: ScreenChar, col: usize, row: usize) {
+    fn write_at(&mut self, screen_char: ScreenChar, col: usize, row: usize) {
         match screen_char.ascii_character {
             b'\n' => self.new_line(),
             _ => {
@@ -111,7 +111,16 @@ impl Writer {
         }
     }
 
-    pub fn clear_at(&mut self, col: usize, row: usize) {
+    fn clear_char(&mut self) {
+        let row = self.buffer_height - 1;
+        let col = self.column_position - 1;
+
+        self.column_position -= 1;
+
+        self.clear_at(col, row);
+    }
+
+    fn clear_at(&mut self, col: usize, row: usize) {
         let blank = ScreenChar {
             ascii_character: b' ',
             color_code: ColorCode::new(Rgb8(0xFFFFFF), Rgb8(0)),
@@ -127,7 +136,7 @@ impl Writer {
         }
     }
 
-    pub fn new_line(&mut self) {
+    fn new_line(&mut self) {
         for row in 1..self.buffer_height {
             for col in 0..self.buffer_width {
                 let bottom_character = self.screen_buffer[col][row];
@@ -185,9 +194,21 @@ pub fn display_pixel(framebuffer: &Framebuffer, col: usize, row: usize, color: u
     unsafe { *(framebuffer.addr().add(pixel_offset) as *mut u32) = color; };
 }
 
+pub fn backspace() {
+    let writer = Writer::instance();
+    match writer {
+        Some(writer) => {
+            writer.lock().clear_char();
+        }
+        None => {
+            serial_println!("buffer uninitialized");
+        }
+    }
+}
+
 macro_rules! print {
     ($($arg:tt)*) => ({
-        $crate::graphics::framebuffer::_print(format_args!($($arg)*));
+        $crate::graphics::framebuffer_device::_print(format_args!($($arg)*));
     });
 }
 
@@ -199,11 +220,11 @@ macro_rules! println {
 #[macro_export]
 macro_rules! info {
     ($fmt:expr) => ({
-        $crate::graphics::framebuffer::_print_header($crate::graphics::framebuffer::LogLevel::Info);
+        $crate::graphics::framebuffer_device::_print_header($crate::graphics::framebuffer_device::LogLevel::Info);
         print!(concat!($fmt, "\n"));
     });
     ($fmt:expr, $($arg:tt)*) => ({
-        $crate::graphics::framebuffer::_print_header($crate::graphics::framebuffer::LogLevel::Info);
+        $crate::graphics::framebuffer_device::_print_header($crate::graphics::framebuffer_device::LogLevel::Info);
         print!(concat!($fmt, "\n"), $($arg)*);
     });
 }
@@ -211,11 +232,11 @@ macro_rules! info {
 #[macro_export]
 macro_rules! warn {
     ($fmt:expr) => ({
-        $crate::graphics::framebuffer::_print_header($crate::graphics::framebuffer::LogLevel::Warning);
+        $crate::graphics::framebuffer_device::_print_header($crate::graphics::framebuffer_device::LogLevel::Warning);
         print!(concat!($fmt, "\n"));
     });
     ($fmt:expr, $($arg:tt)*) => ({
-        $crate::graphics::framebuffer::_print_header($crate::graphics::framebuffer::LogLevel::Warning);
+        $crate::graphics::framebuffer_device::_print_header($crate::graphics::framebuffer_device::LogLevel::Warning);
         print!(concat!($fmt, "\n"), $($arg)*);
     });
 }
@@ -223,11 +244,11 @@ macro_rules! warn {
 #[macro_export]
 macro_rules! error {
     ($fmt:expr) => ({
-        $crate::graphics::framebuffer::_print_header($crate::graphics::framebuffer::LogLevel::Error);
+        $crate::graphics::framebuffer_device::_print_header($crate::graphics::framebuffer_device::LogLevel::Error);
         print!(concat!($fmt, "\n"));
     });
     ($fmt:expr, $($arg:tt)*) => ({
-        $crate::graphics::framebuffer::_print_header($crate::graphics::framebuffer::LogLevel::Error);
+        $crate::graphics::framebuffer_device::_print_header($crate::graphics::framebuffer_device::LogLevel::Error);
         print!(concat!($fmt, "\n"), $($arg)*);
     });
 }
@@ -235,11 +256,11 @@ macro_rules! error {
 #[macro_export]
 macro_rules! ok {
     ($fmt:expr) => ({
-        $crate::graphics::framebuffer::_print_header($crate::graphics::framebuffer::LogLevel::Ok);
+        $crate::graphics::framebuffer_device::_print_header($crate::graphics::framebuffer_device::LogLevel::Ok);
         print!(concat!($fmt, "\n"));
     });
     ($fmt:expr, $($arg:tt)*) => ({
-        $crate::graphics::framebuffer::_print_header($crate::graphics::framebuffer::LogLevel::Ok);
+        $crate::graphics::framebuffer_device::_print_header($crate::graphics::framebuffer_device::LogLevel::Ok);
         print!(concat!($fmt, "\n"), $($arg)*);
     });
 }

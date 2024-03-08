@@ -29,7 +29,8 @@ use crate::drivers::ps2::init_ps2_controller;
 use crate::drivers::ps2::keyboard::PS2Keyboard;
 use crate::drivers::ps2::PS2DeviceType;
 use crate::fs::ext2::mount_filesystem;
-use crate::graphics::framebuffer::Writer;
+use crate::fs::vfs::Vfs;
+use crate::graphics::framebuffer_device::Writer;
 use crate::interrupts::{INTERRUPT_CONTROLLER, InterruptController};
 use crate::memory::{MemoryManager, VirtualAddress};
 use crate::task::keyboard::print_key_inputs;
@@ -106,9 +107,13 @@ unsafe fn init() {
         }
     }
 
-    print!(">");
+    Vfs::init();
 
-    executor.run();
+    Vfs::find_child(Vfs::root_directory(), )
+
+    //print!(">");
+
+    //executor.run();
 }
 
 #[panic_handler]
