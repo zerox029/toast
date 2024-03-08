@@ -109,7 +109,14 @@ unsafe fn init() {
 
     Vfs::init();
 
-    Vfs::find_child(Vfs::root_directory(), )
+    let root = Vfs::root_directory().clone();
+    Vfs::add_child_node(root.clone(), "dev");
+
+    let dev = Vfs::find_child(root.clone(), "dev").unwrap();
+    Vfs::add_child_node(dev.clone(), "fb0");
+    let fb = Vfs::find_child(dev.clone(), "fb0").unwrap();
+
+    println!("Selected node path is: {}", Vfs::get_absolute_path(fb.clone()));
 
     //print!(">");
 

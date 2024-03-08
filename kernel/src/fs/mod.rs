@@ -4,14 +4,6 @@ pub mod vfs;
 const MAX_FILENAME_LENGTH: usize = 256;
 const MAX_PATH_LENGTH: usize = 4096;
 
-pub trait File {
-    fn open();
-    fn close();
-
-    fn read();
-    fn write();
-}
-
 pub trait FileSystem {
     fn create_directory();
     fn delete_directory();
