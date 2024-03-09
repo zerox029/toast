@@ -16,6 +16,7 @@ use crate::drivers::pci::{find_all_pci_devices, PCIDevice};
 use crate::memory::{MemoryManager, PhysicalAddress};
 use crate::memory::physical_memory::Frame;
 use crate::memory::virtual_memory::paging::entry::EntryFlags;
+use crate::serial_println;
 use crate::utils::bitutils::is_nth_bit_set;
 
 const SATA_SIG_ATA: u32     = 0x00000101;   // SATA drive
@@ -466,7 +467,7 @@ impl AHCIDevice {
             return 0;
         }
 
-        let read_buffer_address = MemoryManager::pmm_alloc(byte_count as usize, EntryFlags::WRITABLE)
+        let read_buffer_address = MemoryManager::pmm_identity(byte_count as usize, EntryFlags::WRITABLE)
             .expect("ahci: could not allocate the memory for device read");
 
         let read_sectors = self.issue_read(start_block, block_count, read_buffer_address as *mut c_void);
@@ -486,7 +487,7 @@ impl AHCIDevice {
         let block_count = byte_count.div_ceil(sector_size);
 
         let write_buffer_address = {
-            MemoryManager::pmm_alloc(byte_count as usize, EntryFlags::WRITABLE)
+            MemoryManager::pmm_identity(byte_count as usize, EntryFlags::WRITABLE)
                 .expect("ahci: could not allocate the memory for device write")
         };
 
@@ -773,7 +774,7 @@ fn init_port(controller: &AHCIController, port_index: usize, port_address: usize
     // TODO: Allocate memory for these more efficiently, no need to allocate a new frame every time
     // Allocate physical memory for the command list
     let command_list_base = {
-        MemoryManager::pmm_alloc(1, EntryFlags::WRITABLE | EntryFlags::NO_CACHE)
+        MemoryManager::pmm_identity(1, EntryFlags::WRITABLE | EntryFlags::NO_CACHE)
             .unwrap_or_else(|| panic!("ahci: could not allocate the memory for the command list on port {}", port_index))
     };
 
@@ -786,7 +787,7 @@ fn init_port(controller: &AHCIController, port_index: usize, port_address: usize
         let command_header = unsafe{ &mut *(header_address as *mut CommandHeader) };
 
         let command_table_base_address = {
-            MemoryManager::pmm_alloc(1, EntryFlags::WRITABLE | EntryFlags::NO_CACHE)
+            MemoryManager::pmm_identity(1, EntryFlags::WRITABLE | EntryFlags::NO_CACHE)
                 .unwrap_or_else(|| panic!("ahci: could not allocate the memory for the command table {} on port {}", i, port_index))
         };
 
@@ -797,7 +798,7 @@ fn init_port(controller: &AHCIController, port_index: usize, port_address: usize
 
     // Allocate physical memory for the received FIS
     let fis_base_base_address = {
-        MemoryManager::pmm_alloc(1, EntryFlags::WRITABLE | EntryFlags::NO_CACHE)
+        MemoryManager::pmm_identity(1, EntryFlags::WRITABLE | EntryFlags::NO_CACHE)
             .unwrap_or_else(|| panic!("ahci: could not allocate the memory for the FIS on port {}", port_index))
     };
 
@@ -808,7 +809,7 @@ fn init_port(controller: &AHCIController, port_index: usize, port_address: usize
     ahci_device.port_registers.cmd |= (1 << 0) | (1 << 4);
 
     let identity_address = {
-        MemoryManager::pmm_alloc(size_of::<AHCIIdentifyResponse>(), EntryFlags::WRITABLE | EntryFlags::NO_CACHE)
+        MemoryManager::pmm_identity(size_of::<AHCIIdentifyResponse>(), EntryFlags::WRITABLE | EntryFlags::NO_CACHE)
             .expect("ahci: could not allocate the memory for device identification")
     };
 

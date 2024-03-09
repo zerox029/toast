@@ -9,6 +9,7 @@ use crate::{FRAMEBUFFER_REQUEST, panic, serial_println};
 use crate::drivers::fbdev::FB_DEVICES;
 use crate::fs::{Vfs, VfsNode};
 use crate::graphics::fonts::{FONT, FONT_HEIGHT, FONT_WIDTH};
+use crate::serial::serial_print;
 
 const DEFAULT_COLOR_CODE: ColorCode = ColorCode::new(Rgb8(0xFFFFFF), Rgb8(0));
 
@@ -74,6 +75,8 @@ impl Writer {
         }
 
         let framebuffer = &FB_DEVICES.lock()[0];
+
+        serial_println!("{}x{}", framebuffer.screen_info.width, framebuffer.screen_info.height);
 
         let buffer_width = framebuffer.screen_info.width as usize / FONT_WIDTH;
         let buffer_height = framebuffer.screen_info.height as usize / FONT_HEIGHT;
@@ -293,7 +296,7 @@ pub fn _print(args: core::fmt::Arguments) {
             writer.lock().write_fmt(args).unwrap()
         }
         None => {
-            serial_println!("buffer uninitialized");
+            serial_print(args);
         }
     }
 }

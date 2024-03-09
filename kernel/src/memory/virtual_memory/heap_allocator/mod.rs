@@ -3,14 +3,15 @@ mod slab_allocator;
 
 use alloc::boxed::Box;
 use alloc::vec::Vec;
-use crate::memory::{VirtualAddress};
+use crate::memory::{MemoryManager, PAGE_SIZE, VirtualAddress};
 use crate::memory::virtual_memory::heap_allocator::slab_allocator::SlabAllocator;
 use crate::memory::virtual_memory::paging::{ActivePageTable, Page};
 use crate::memory::virtual_memory::paging::entry::EntryFlags;
 use crate::{HHDM_OFFSET, serial_println};
 use crate::memory::physical_memory::FrameAllocator;
+use crate::memory::virtual_memory::VirtualMemoryManager;
 
-pub const HEAP_START: VirtualAddress = 0x4444_4444_0000;
+pub const HEAP_START: VirtualAddress = 0xFFFFC90000000000;
 pub const HEAP_SIZE: usize = 1000 * 1024; // 1 MiB
 
 #[global_allocator]
@@ -36,11 +37,11 @@ fn align_up(addr: VirtualAddress, align: usize) -> VirtualAddress {
     (addr + align - 1) & !(align - 1)
 }
 
-pub fn init_heap<A>(page_table: &mut ActivePageTable, frame_allocator: &mut A) where A: FrameAllocator {
+pub fn init_heap<A>(frame_allocator: &mut A, page_table: &mut ActivePageTable) where A: FrameAllocator {
     serial_println!("mm: initializing the heap...");
 
     let page_range = {
-        let heap_start: VirtualAddress = HEAP_START + *HHDM_OFFSET;
+        let heap_start: VirtualAddress = HEAP_START;
         let heap_end: VirtualAddress = heap_start + HEAP_SIZE - 1usize;
         let heap_start_page = Page::containing_address(heap_start);
         let heap_end_page = Page::containing_address(heap_end);
@@ -58,10 +59,10 @@ pub fn init_heap<A>(page_table: &mut ActivePageTable, frame_allocator: &mut A) w
     }
 
     unsafe {
-        ALLOCATOR.lock().init(HEAP_START + *HHDM_OFFSET, HEAP_SIZE);
+        ALLOCATOR.lock().init(HEAP_START, HEAP_SIZE);
     }
 
-    serial_println!("mm: heap starts at 0x{:X}", HEAP_START + *HHDM_OFFSET);
+    serial_println!("mm: heap starts at 0x{:X}", HEAP_START);
 }
 
 // TODO: Setup custom test framework

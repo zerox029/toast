@@ -12,6 +12,7 @@
 #![feature(new_uninit)]
 #![feature(str_from_raw_parts)]
 #![feature(extract_if)]
+#![feature(btree_extract_if)]
 
 extern crate downcast_rs;
 extern crate alloc;
@@ -77,6 +78,9 @@ unsafe extern fn _start() {
 }
 
 unsafe fn init() {
+    serial_println!("{:X}", *HHDM_OFFSET);
+    print_memory_map();
+
     MemoryManager::init(MEMORY_MAP_REQUEST.get_response().expect("could not retrieve the kernel address"));
 
     FRAMEBUFFER_REQUEST.get_response().expect("could not retrieve the frame buffer").framebuffers().for_each(|fbdev| {
@@ -128,7 +132,7 @@ unsafe fn init() {
 
 #[panic_handler]
 fn panic(info: &PanicInfo) -> ! {
-    error!("{}", info);
+    println!("{}", info);
 
     loop {}
 }
