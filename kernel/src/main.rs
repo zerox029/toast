@@ -13,12 +13,14 @@
 #![feature(str_from_raw_parts)]
 #![feature(extract_if)]
 #![feature(btree_extract_if)]
+#![feature(custom_test_frameworks)]
+#![test_runner(crate::test_runner)]
+#![reexport_test_harness_main = "test_main"]
 
 extern crate downcast_rs;
 extern crate alloc;
 
 use alloc::string::String;
-use core::arch::asm;
 use core::panic::PanicInfo;
 use lazy_static::lazy_static;
 use limine::BaseRevision;
@@ -39,6 +41,8 @@ use crate::memory::{MemoryManager, VirtualAddress};
 use crate::task::keyboard::print_key_inputs;
 use crate::task::executor::Executor;
 use crate::task::Task;
+use crate::utils::hcf;
+use crate::utils::tests::{exit_qemu, QemuExitCode, Testable};
 
 #[macro_use]
 mod graphics;
@@ -66,18 +70,20 @@ pub static HHDM_REQUEST: HhdmRequest = HhdmRequest::new();
 
 #[no_mangle]
 #[allow(clippy::missing_safety_doc)]
-unsafe extern fn _start() {
+unsafe extern fn _entry() {
     assert!(BASE_REVISION.is_supported());
 
     init();
+
+    #[cfg(test)]
+    test_main();
+
+    serial_println!("here");
 
     hcf();
 }
 
 unsafe fn init() {
-    serial_println!("{:X}", *HHDM_OFFSET);
-    print_memory_map();
-
     MemoryManager::init(MEMORY_MAP_REQUEST.get_response().expect("could not retrieve the kernel address"));
 
     FRAMEBUFFER_REQUEST.get_response().expect("could not retrieve the frame buffer").framebuffers().for_each(|fbdev| {
@@ -127,24 +133,6 @@ unsafe fn init() {
     //executor.run();
 }
 
-#[panic_handler]
-fn panic(info: &PanicInfo) -> ! {
-    println!("{}", info);
-
-    loop {}
-}
-
-fn hcf() -> ! {
-    unsafe {
-        asm!("cli");
-        loop {
-            asm!("hlt");
-        }
-    }
-}
-
-#[lang = "eh_personality"] #[no_mangle] pub extern fn eh_personality() {}
-
 fn print_memory_map() {
     MEMORY_MAP_REQUEST.get_response().unwrap().entries().iter().for_each(|entry| {
         match entry.entry_type {
@@ -159,4 +147,37 @@ fn print_memory_map() {
             _ => ()
         }
     });
+}
+
+#[cfg(not(test))]
+#[panic_handler]
+fn panic(info: &PanicInfo) -> ! {
+    println!("{}", info);
+
+    loop {}
+}
+
+#[cfg(test)]
+#[panic_handler]
+fn panic(info: &PanicInfo) -> ! {
+    serial_println!("[failed]\n");
+    serial_println!("Error: {}\n", info);
+    exit_qemu(QemuExitCode::Failure);
+
+    loop {}
+}
+
+#[cfg(test)]
+pub fn test_runner(tests: &[&dyn Testable]) {
+    serial_println!("Running {} tests", tests.len());
+    for test in tests {
+        test.run();
+    }
+
+    exit_qemu(QemuExitCode::Success);
+}
+
+#[test_case]
+fn trivial_assertion() {
+    assert_eq!(1, 1);
 }
