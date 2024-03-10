@@ -3,13 +3,11 @@ mod slab_allocator;
 
 use alloc::boxed::Box;
 use alloc::vec::Vec;
-use crate::memory::{MemoryManager, PAGE_SIZE, VirtualAddress};
+use crate::memory::{VirtualAddress};
 use crate::memory::virtual_memory::heap_allocator::slab_allocator::SlabAllocator;
 use crate::memory::virtual_memory::paging::{ActivePageTable, Page};
 use crate::memory::virtual_memory::paging::entry::EntryFlags;
-use crate::{HHDM_OFFSET, serial_println};
 use crate::memory::physical_memory::FrameAllocator;
-use crate::memory::virtual_memory::VirtualMemoryManager;
 
 pub const HEAP_START: VirtualAddress = 0xFFFFC90000000000;
 pub const HEAP_SIZE: usize = 1000 * 1024; // 1 MiB

@@ -3,7 +3,6 @@ use alloc::format;
 use alloc::string::String;
 use alloc::sync::{Arc, Weak};
 use alloc::vec::Vec;
-use core::ffi::c_void;
 use core::ops::ControlFlow;
 use conquer_once::spin::OnceCell;
 use spin::Mutex;

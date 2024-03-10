@@ -2,12 +2,11 @@ use alloc::{vec};
 use alloc::vec::Vec;
 use core::fmt::Write;
 use conquer_once::spin::OnceCell;
-use limine::framebuffer::Framebuffer;
 use rlibc::memcpy;
 use spin::Mutex;
-use crate::{FRAMEBUFFER_REQUEST, panic, serial_println};
+use crate::{FRAMEBUFFER_REQUEST, serial_println};
 use crate::drivers::fbdev::FB_DEVICES;
-use crate::fs::{Vfs, VfsNode};
+use crate::fs::{VfsNode};
 use crate::graphics::fonts::{FONT, FONT_HEIGHT, FONT_WIDTH};
 use crate::serial::serial_print;
 
@@ -91,7 +90,7 @@ impl Writer {
             screen_buffer,
         };
 
-        INSTANCE.init_once(|| Mutex::new(writer));
+        INSTANCE.try_init_once(|| Mutex::new(writer)).expect("Cannot initialize the framebuffer more than once");
     }
 
     fn write_char(&mut self, screen_char: ScreenChar) {

@@ -7,7 +7,6 @@ use self::physical_memory::buddy_allocator::BuddyAllocator;
 use self::virtual_memory::paging::ActivePageTable;
 use self::virtual_memory::paging::entry::EntryFlags;
 use self::virtual_memory::heap_allocator::init_heap;
-use crate::{HHDM_OFFSET, serial_println};
 use crate::memory::physical_memory::{Frame, FrameAllocator};
 use crate::memory::virtual_memory::paging::Page;
 use crate::memory::virtual_memory::VirtualMemoryManager;
@@ -78,11 +77,11 @@ impl MemoryManager {
         None
     }
 
-    pub fn vmm_zero_alloc() {
-        unimplemented!();
+    pub fn vmm_zero_alloc(_size: usize, _flags: EntryFlags) -> Option<VirtualAddress> {
+        unimplemented!()
     }
 
-    pub fn vmm_free() {
+    pub fn vmm_free(_size: usize, _address: VirtualAddress) {
         unimplemented!();
     }
 

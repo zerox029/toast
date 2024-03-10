@@ -16,7 +16,6 @@ use crate::drivers::pci::{find_all_pci_devices, PCIDevice};
 use crate::memory::{MemoryManager, PhysicalAddress};
 use crate::memory::physical_memory::Frame;
 use crate::memory::virtual_memory::paging::entry::EntryFlags;
-use crate::serial_println;
 use crate::utils::bitutils::is_nth_bit_set;
 
 const SATA_SIG_ATA: u32     = 0x00000101;   // SATA drive

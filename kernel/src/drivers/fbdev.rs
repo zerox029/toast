@@ -7,8 +7,7 @@ use limine::framebuffer::Framebuffer;
 use rlibc::memcpy;
 use spin::Mutex;
 use crate::fs::{Vfs, VfsNode, VfsNodeRef, VfsNodeWeakRef};
-use crate::memory::{MemoryManager, PhysicalAddress, VirtualAddress};
-use crate::serial_println;
+use crate::memory::{PhysicalAddress, VirtualAddress};
 
 lazy_static! {
     pub static ref FB_DEVICES: Mutex<Vec<FrameBufferDevice>> = Mutex::new(Vec::new());
@@ -87,7 +86,7 @@ impl VfsNode for FrameBufferDevice {
         todo!()
     }
 
-    fn read(&self, buffer: *mut u8, byte_count: usize, offset: usize) {
+    fn read(&self, _buffer: *mut u8, _byte_count: usize, _offset: usize) {
         todo!()
     }
 

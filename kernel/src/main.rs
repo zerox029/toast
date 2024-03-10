@@ -17,7 +17,6 @@
 extern crate downcast_rs;
 extern crate alloc;
 
-use alloc::{format, vec};
 use alloc::string::String;
 use core::arch::asm;
 use core::panic::PanicInfo;
@@ -25,7 +24,6 @@ use lazy_static::lazy_static;
 use limine::BaseRevision;
 use limine::memory_map::EntryType;
 use limine::request::{FramebufferRequest, HhdmRequest, MemoryMapRequest};
-use rlibc::memcpy;
 use x86_64::registers::model_specific::Efer;
 use x86_64::registers::control::{Cr0, Cr0Flags, EferFlags};
 use crate::drivers::cpuid::CPU_INFO;
@@ -34,9 +32,7 @@ use crate::drivers::ps2::keyboard::PS2Keyboard;
 use crate::drivers::ps2::PS2DeviceType;
 use crate::fs::ext2::mount_filesystem;
 use drivers::fbdev::FrameBufferDevice;
-use crate::drivers::fbdev::FB_DEVICES;
-use crate::fs::{Vfs, VfsNode};
-use crate::graphics::fonts::{FONT_HEIGHT, FONT_WIDTH};
+use crate::fs::Vfs;
 use crate::graphics::framebuffer_device::Writer;
 use crate::interrupts::{INTERRUPT_CONTROLLER, InterruptController};
 use crate::memory::{MemoryManager, VirtualAddress};
@@ -46,6 +42,8 @@ use crate::task::Task;
 
 #[macro_use]
 mod graphics;
+#[macro_use]
+mod serial;
 mod arch;
 mod memory;
 mod interrupts;
@@ -53,7 +51,6 @@ mod utils;
 mod drivers;
 mod task;
 mod fs;
-mod serial;
 
 pub const KERNEL_START_VMA_ADDRESS: VirtualAddress = 0xFFFFFFFF80000000;
 
@@ -105,7 +102,7 @@ unsafe fn init() {
     // init_acpi(boot_info); // TODO: This broke at some point, fix it
 
     let mut ahci_devices = drivers::pci::ahci::init();
-    let fs = mount_filesystem(&mut ahci_devices[0]);
+    let _fs = mount_filesystem(&mut ahci_devices[0]);
 
     /*
     let file_name = "/files/file.txt";

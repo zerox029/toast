@@ -7,7 +7,7 @@ use crate::memory::physical_memory::{Frame, FrameAllocator};
 use crate::memory::virtual_memory::paging::entry::EntryFlags;
 use crate::memory::virtual_memory::paging::temporary_page::TemporaryPage;
 use crate::memory::virtual_memory::paging::mapper::Mapper;
-use crate::{HHDM_OFFSET, KERNEL_START_VMA_ADDRESS, serial_println};
+use crate::{HHDM_OFFSET, KERNEL_START_VMA_ADDRESS};
 use crate::arch::x86_64::registers::cr3;
 
 pub mod entry;

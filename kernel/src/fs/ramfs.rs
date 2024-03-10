@@ -29,11 +29,11 @@ impl VfsNode for RamfsNode {
         panic!("fs: cannot invoke method 'close' on a ramfs node");
     }
 
-    fn read(&self, buffer: *mut u8, byte_count: usize, offset: usize) {
-        todo!()
+    fn read(&self, _buffer: *mut u8, _byte_count: usize, _offset: usize) {
+        unimplemented!()
     }
 
-    fn write(&self, buffer: *const u8, byte_count: usize, offset: usize) {
-        todo!()
+    fn write(&self, _buffer: *const u8, _byte_count: usize, _offset: usize) {
+        unimplemented!()
     }
 }
