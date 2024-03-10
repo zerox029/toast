@@ -38,7 +38,7 @@ impl MemoryManager {
 
         // Switch to the buddy allocator
         let mut buddy_allocator = BuddyAllocator::new(memory_map);
-        buddy_allocator.set_allocated_frames(linear_allocator.allocated_frames());
+        buddy_allocator.set_allocated_frames(linear_allocator.allocated_frames()).expect("mm: could not set allocated frames when switching allocators");
 
         let memory_manager = Self {
             frame_allocator: buddy_allocator,
@@ -63,7 +63,7 @@ impl MemoryManager {
                 let page_address = virtual_alloc + i * PAGE_SIZE;
                 let page = Page::containing_address(page_address);
 
-                if let Some(frame) =  memory_manager.frame_allocator.allocate_frame() {
+                if let Ok(frame) =  memory_manager.frame_allocator.allocate_frame() {
                     memory_manager.vmm_map_to(page, frame, flags);
                 }
                 else {
@@ -91,7 +91,8 @@ impl MemoryManager {
         let page_count = size.div_ceil(PAGE_SIZE);
         let order = (0..=10).find(|&x| 2usize.pow(x as u32) >= page_count).expect("pmm_alloc: could not allocate memory");
 
-        memory_manager.frame_allocator.allocate_frames(order)
+        let alloc = memory_manager.frame_allocator.allocate_frames(order).expect("pmm: could not allocate memory");
+        Some(alloc)
     }
 
     /// Allocates enough physically contiguous identity mapped pages to cover the requested size
@@ -101,21 +102,18 @@ impl MemoryManager {
         let page_count = size.div_ceil(PAGE_SIZE);
         let order = (0..=10).find(|&x| 2usize.pow(x as u32) >= page_count).expect("pmm_alloc: could not allocate memory");
 
-        let alloc_start = memory_manager.frame_allocator.allocate_frames(order);
+        let alloc_start = memory_manager.frame_allocator.allocate_frames(order).expect("pmm: could not identity map");
+        let alloc_size = 2usize.pow(order as u32);
 
-        if let Some(alloc_start) = alloc_start {
-            let alloc_size = 2usize.pow(order as u32);
+        // Identity map the pages
+        for page_number in 0..alloc_size {
+            let page_address = alloc_start + PAGE_SIZE * page_number;
+            let frame = Frame::containing_address(page_address);
 
-            // Identity map the pages
-            for page_number in 0..alloc_size {
-                let page_address = alloc_start + PAGE_SIZE * page_number;
-                let frame = Frame::containing_address(page_address);
-
-                memory_manager.pmm_identity_map(frame, flags);
-            }
+            memory_manager.pmm_identity_map(frame, flags);
         }
 
-        alloc_start
+        Some(alloc_start)
     }
 
     pub fn pmm_zero_alloc(&mut self, _size: usize, _flags: EntryFlags) {
@@ -126,9 +124,9 @@ impl MemoryManager {
         let mut memory_manager = MemoryManager::instance().lock();
 
         let page_count = size.div_ceil(PAGE_SIZE);
-        let order = (0..=10).find(|&x| 2usize.pow(x as u32) >= page_count).expect("pmm_alloc: could not allocate memory");
+        let order = (0..=10).find(|&x| 2usize.pow(x as u32) >= page_count).expect("pmm: could not free memory");
 
-        memory_manager.frame_allocator.deallocate_frames(address, order);
+        memory_manager.frame_allocator.deallocate_frames(address, order).expect("pmm: could not free memory");
 
         let freed_size = 2usize.pow(order as u32);
 

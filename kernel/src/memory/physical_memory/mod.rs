@@ -51,6 +51,6 @@ impl Iterator for FrameIter {
 }
 
 pub trait FrameAllocator {
-    fn allocate_frame(&mut self) -> Option<Frame>;
-    fn deallocate_frame(&mut self, frame: Frame);
+    fn allocate_frame(&mut self) -> Result<Frame, &'static str>;
+    fn deallocate_frame(&mut self, frame: Frame) -> Result<(), &'static str>;
 }

@@ -75,8 +75,6 @@ impl Writer {
 
         let framebuffer = &FB_DEVICES.lock()[0];
 
-        serial_println!("{}x{}", framebuffer.screen_info.width, framebuffer.screen_info.height);
-
         let buffer_width = framebuffer.screen_info.width as usize / FONT_WIDTH;
         let buffer_height = framebuffer.screen_info.height as usize / FONT_HEIGHT;
 

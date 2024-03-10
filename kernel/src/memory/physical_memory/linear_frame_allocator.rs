@@ -35,11 +35,11 @@ pub struct LinearFrameAllocator {
 }
 
 impl FrameAllocator for LinearFrameAllocator {
-    fn allocate_frame(&mut self) -> Option<Frame> {
+    fn allocate_frame(&mut self) -> Result<Frame, &'static str> {
         // Look for a previously allocated frame that has been freed
         for frame_number in 0..self.allocated_frames_count {
             if !self.allocated_frames[frame_number].used {
-                return Some(Frame { number: self.allocated_frames[frame_number].frame_address.unwrap() });
+                return Ok(Frame { number: self.allocated_frames[frame_number].frame_address.unwrap() });
             }
         }
 
@@ -64,20 +64,30 @@ impl FrameAllocator for LinearFrameAllocator {
                 self.allocated_frames[self.allocated_frames_count] = FrameStatus { frame_address: Some(frame.start_address()), used: true };
                 self.allocated_frames_count += 1;
 
-                Some(frame)
+                Ok(frame)
             }
         }
         else {
-            None
+            Err("linear frame allocator could not allocate requested frame")
         }
     }
 
-    fn deallocate_frame(&mut self, frame: Frame) {
+    fn deallocate_frame(&mut self, frame: Frame) -> Result<(), &'static str> {
         for frame_number in 0..self.allocated_frames_count {
             if self.allocated_frames[frame_number].frame_address.unwrap() == frame.number {
-                self.allocated_frames[frame_number].used = false;
+                if self.allocated_frames[frame_number].used == true {
+                    self.allocated_frames[frame_number].used = false;
+                }
+                else {
+                    return Err("cannot deallocate a non-allocated frame");
+                }
+            }
+            else {
+                return Err("error deallocating frame");
             }
         }
+
+        Ok(())
     }
 }
 

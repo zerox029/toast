@@ -52,28 +52,34 @@ impl TinyAllocator {
         where A: FrameAllocator
     {
         let mut f = || allocator.allocate_frame();
-        let frames = [f(), f(), f()];
+        let frames = [
+            Some(f().expect("could not allocate frame")),
+            Some(f().expect("could not allocate frame")),
+            Some(f().expect("could not allocate frame"))
+        ];
         TinyAllocator(frames)
     }
 }
 
 impl FrameAllocator for TinyAllocator {
-    fn allocate_frame(&mut self) -> Option<Frame> {
+    fn allocate_frame(&mut self) -> Result<Frame, &'static str> {
         for frame_option in &mut self.0 {
             if frame_option.is_some() {
-                return frame_option.take();
+                return Ok(frame_option.take().unwrap());
             }
         }
-        None
+
+        Err("could not allocate frame")
     }
 
-    fn deallocate_frame(&mut self, frame: Frame) {
+    fn deallocate_frame(&mut self, frame: Frame) -> Result<(), &'static str> {
         for frame_option in &mut self.0 {
             if frame_option.is_none() {
                 *frame_option = Some(frame);
-                return;
+                return Ok(());
             }
         }
-        panic!("Tiny allocator can hold only 3 frames.");
+
+        Err("Tiny allocator can hold only 3 frames.")
     }
 }

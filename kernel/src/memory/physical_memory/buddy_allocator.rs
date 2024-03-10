@@ -35,7 +35,7 @@ pub struct BuddyAllocator {
     memory_blocks: MemoryBlocks,
 }
 
-#[derive(Debug, Copy, Clone)]
+#[derive(Debug, Copy, Clone, Eq, PartialEq)]
 struct MemoryBlock {
     is_allocated: bool,
     starting_address: PhysicalAddress,
@@ -78,17 +78,21 @@ impl BuddyAllocator {
     /// Marks the specified frames as allocated. This is mostly used when transitioning
     /// from the linear allocator to this one, but it is also occasionally used when hardware
     /// specifies certain address like the AHCI controller
-    pub fn set_allocated_frames(&mut self, frames: Vec<PhysicalAddress>) {
+    pub fn set_allocated_frames(&mut self, frames: Vec<PhysicalAddress>) -> Result<(), &'static str> {
         for frame_address in frames {
-            self.allocate_frame_at_address(frame_address);
+            if let Err(err) = self.allocate_frame_at_address(frame_address) {
+                return Err(&*err);
+            }
         }
+
+        Ok(())
     }
 
     /// Allocates 2^order contiguous frames
-    /// Returns the starting address of the allocated block wrapped in an Option
-    pub fn allocate_frames(&mut self, order: usize) -> Option<PhysicalAddress> {
+    /// Returns the starting address of the allocated block
+    pub fn allocate_frames(&mut self, order: usize) -> Result<PhysicalAddress, &'static str> {
         if order > MAX_ORDER {
-            panic!("Cannot allocate more than {} contiguous frames", MAX_ORDER);
+            return Err("cannot allocate more than 10 contiguous frames")
         }
 
         let first_free_block = self.memory_blocks[order].iter_mut().find(|block| !block.is_allocated);
@@ -96,31 +100,31 @@ impl BuddyAllocator {
             let block = first_free_block.unwrap();
             block.is_allocated = true;
 
-            Some(block.starting_address)
+            Ok(block.starting_address)
         } else {
             self.split_block(order + 1)
         }
     }
 
     /// Deallocates 2^order contiguous frames
-    pub fn deallocate_frames(&mut self, start_address: PhysicalAddress, order: usize) {
+    pub fn deallocate_frames(&mut self, start_address: PhysicalAddress, order: usize) -> Result<(), &'static str> {
         let memory_block = self.memory_blocks[order].iter_mut()
             .find(|block| block.starting_address == start_address);
 
         if memory_block.is_none() {
-            panic!("could not find the frame to deallocate");
+            return Err("could not find the frame to deallocate");
         }
 
         if let Some(memory_block) = memory_block {
             if !memory_block.is_allocated {
-                panic!("frame was already unallocated");
+                return Err("frame was already unallocated");
             }
 
             memory_block.is_allocated = false;
 
             // Merge only if block is a buddy
             if memory_block.block_type == BlockType::TopLevel {
-                return;
+                return Ok(());
             }
 
             let buddy_address = if memory_block.block_type == BlockType::LeftBuddy {
@@ -133,7 +137,7 @@ impl BuddyAllocator {
                 .find(|block| block.starting_address == buddy_address);
 
             if buddy.is_none() {
-                panic!("could not find the frame to deallocate");
+                return Err("could not find the frame to deallocate");
             }
 
             // Merge the two blocks
@@ -146,21 +150,26 @@ impl BuddyAllocator {
                     let _extracted_buddy = self.memory_blocks[order]
                         .extract_if(|block| block.starting_address == buddy_address);
 
-                    self.memory_blocks[order + 1]
+                    let parent_block = self.memory_blocks[order + 1]
                         .iter_mut()
-                        .find(|block| block.starting_address == parent_block_address)
-                        .expect("could not find a parent block")
-                        .is_allocated = false;
+                        .find(|block| block.starting_address == parent_block_address);
+
+                    match parent_block {
+                        Some(parent_block) => parent_block.is_allocated = false,
+                        None => return Err("could not find a parent block")
+                    }
                 }
             }
         }
+
+        Ok(())
     }
 
     /// Allocates a single frame at a given address. This is mostly used when transitioning from
     /// the linear allocator to this one.
-    fn allocate_frame_at_address(&mut self, address: PhysicalAddress) -> Option<PhysicalAddress> {
+    fn allocate_frame_at_address(&mut self, address: PhysicalAddress) -> Result<PhysicalAddress, &'static str> {
         if self.memory_blocks[0].iter().any(|block| block.is_allocated && block.starting_address == address) {
-            panic!("frame already allocated");
+            return Err("frame already allocated");
         }
 
         // 1. Find the biggest free block containing the address
@@ -209,7 +218,7 @@ impl BuddyAllocator {
             }
         }
 
-        Some(current_block_clone.starting_address)
+        Ok(current_block_clone.starting_address)
     }
 
     fn map_area(area: &Entry, memory_blocks: &mut MemoryBlocks) {
@@ -246,9 +255,9 @@ impl BuddyAllocator {
 
     /// Split a 2^order sized block into two 2^order-1 sized blocks, and sets the first one as allocated and returns it.
     /// The created blocks are added to the free_areas array at index order-1 and the original block is marked as allocated.
-    fn split_block(&mut self, order: usize) -> Option<PhysicalAddress> {
+    fn split_block(&mut self, order: usize) -> Result<PhysicalAddress, &'static str> {
         if order == 0 {
-            panic!("cannot split block further");
+            return Err("cannot split block further");
         }
 
         // Find the first, smallest unallocated block that fits
@@ -259,50 +268,161 @@ impl BuddyAllocator {
             current_order += 1;
         }
 
-        let current_block = first_free_block.expect("could not allocate memory");
-        current_block.is_allocated = true;
+        match first_free_block {
+            Some(current_block) => {
+                current_block.is_allocated = true;
 
-        let mut current_block_clone = *current_block;
+                let mut current_block_clone = *current_block;
 
-        // Repeatedly split until we get to the desired size
-        while current_block_clone.size_class >= order {
-            let buddy_size_class = current_block_clone.size_class - 1;
+                // Repeatedly split until we get to the desired size
+                while current_block_clone.size_class >= order {
+                    let buddy_size_class = current_block_clone.size_class - 1;
 
-            let left_buddy = MemoryBlock {
-                is_allocated: true,
-                starting_address: current_block_clone.starting_address,
-                size_class: buddy_size_class,
-                block_type: BlockType::LeftBuddy
-            };
+                    let left_buddy = MemoryBlock {
+                        is_allocated: true,
+                        starting_address: current_block_clone.starting_address,
+                        size_class: buddy_size_class,
+                        block_type: BlockType::LeftBuddy
+                    };
 
-            let right_buddy = MemoryBlock {
-                is_allocated: false,
-                starting_address: current_block_clone.starting_address + PAGE_SIZE * 2usize.pow(buddy_size_class as u32),
-                size_class: buddy_size_class,
-                block_type: BlockType::RightBuddy
-            };
+                    let right_buddy = MemoryBlock {
+                        is_allocated: false,
+                        starting_address: current_block_clone.starting_address + PAGE_SIZE * 2usize.pow(buddy_size_class as u32),
+                        size_class: buddy_size_class,
+                        block_type: BlockType::RightBuddy
+                    };
 
-            // Add the two buddies to the linked list
-            self.memory_blocks[buddy_size_class].push_back(left_buddy);
-            self.memory_blocks[buddy_size_class].push_back(right_buddy);
+                    // Add the two buddies to the linked list
+                    self.memory_blocks[buddy_size_class].push_back(left_buddy);
+                    self.memory_blocks[buddy_size_class].push_back(right_buddy);
 
-            // Return only the (allocated) left buddy
-            current_block_clone = left_buddy
+                    // Return only the (allocated) left buddy
+                    current_block_clone = left_buddy
+                }
+
+                Ok(current_block_clone.starting_address)
+            },
+            None => Err("encountered an error while splitting block")
         }
-
-        Some(current_block_clone.starting_address)
     }
 }
 
 impl FrameAllocator for BuddyAllocator {
-    fn allocate_frame(&mut self) -> Option<Frame> {
-        let frame_address = self.allocate_frames(0).expect("could not allocate frame");
+    fn allocate_frame(&mut self) -> Result<Frame, &'static str> {
+        let frame_address = self.allocate_frames(0)?;
         let frame = Frame::containing_address(frame_address);
 
-        Some(frame)
+        Ok(frame)
     }
 
-    fn deallocate_frame(&mut self, frame: Frame) {
-        self.deallocate_frames(frame.start_address(), 0);
+    fn deallocate_frame(&mut self, frame: Frame) -> Result<(), &'static str> {
+        self.deallocate_frames(frame.start_address(), 0)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use limine::memory_map::EntryType;
+    use crate::memory::PAGE_SIZE;
+    use crate::memory::physical_memory::buddy_allocator::{BlockType, BuddyAllocator, MAX_ORDER, MemoryBlock};
+    use crate::memory::physical_memory::FrameAllocator;
+    use crate::MEMORY_MAP_REQUEST;
+
+    #[test_case]
+    fn allocation_too_large() {
+        // GIVEN
+        let memory_map = MEMORY_MAP_REQUEST.get_response().expect("could not find the memory map");
+        let mut allocator = BuddyAllocator::new(memory_map);
+
+        // WHEN
+        let result = allocator.allocate_frames(MAX_ORDER + 1);
+
+        // THEN
+        assert!(result.is_err());
+        //assert_eq!(result.unwrap(), "cannot allocate more than 10 contiguous frames");
+    }
+
+    #[test_case]
+    fn allocate_frame_happy_path() {
+        // GIVEN
+        let memory_map = MEMORY_MAP_REQUEST.get_response().expect("could not find the memory map");
+        let mut allocator = BuddyAllocator::new(memory_map);
+
+        // WHEN
+        let frame = allocator.allocate_frame();
+        let frame_start = frame.unwrap().start_address();
+        let containing_region = memory_map.entries().iter()
+            .filter(|entry| entry.base < frame_start as u64 && entry.base + entry.length > frame_start as u64)
+            .next().expect("could not find the region containing the allocation");
+
+        // THEN
+        assert!(frame.is_ok()); // The frame was allocated correctly
+        assert!(matches!(containing_region.entry_type, EntryType::USABLE)); // The frame is in a usable region
+    }
+
+    #[test_case]
+    fn allocate_multiple_frames_no_overlap() {
+        // GIVEN
+        let memory_map = MEMORY_MAP_REQUEST.get_response().expect("could not find the memory map");
+        let mut allocator = BuddyAllocator::new(memory_map);
+
+        // WHEN
+        let first_frame = allocator.allocate_frame();
+        let second_frame = allocator.allocate_frame();
+
+        // THEN
+        assert_ne!(first_frame.unwrap().start_address(), second_frame.unwrap().start_address());
+    }
+
+    #[test_case]
+    fn reuse_old_frame_after_deallocating() {
+        // GIVEN
+        let memory_map = MEMORY_MAP_REQUEST.get_response().expect("could not find the memory map");
+        let mut allocator = BuddyAllocator::new(memory_map);
+
+        // WHEN
+        let first_frame = allocator.allocate_frame();
+        allocator.deallocate_frame(first_frame.unwrap()).expect("could not deallocate");
+        let second_frame = allocator.allocate_frame();
+
+        // THEN
+        assert_eq!(first_frame.unwrap().start_address(), second_frame.unwrap().start_address());
+    }
+
+    #[test_case]
+    fn split_block_happy_path() {
+        // GIVEN
+        let memory_map = MEMORY_MAP_REQUEST.get_response().expect("could not find the memory map");
+
+        let large_block_size = 5;
+        let large_block = MemoryBlock {
+            is_allocated: false,
+            starting_address: 0,
+            size_class: large_block_size,
+            block_type: BlockType::TopLevel
+        };
+        let expected_left_buddy = MemoryBlock {
+            is_allocated: true,
+            starting_address: 0,
+            size_class: large_block_size - 1,
+            block_type: BlockType::LeftBuddy
+        };
+        let expected_right_buddy = MemoryBlock {
+            is_allocated: false,
+            starting_address: 2usize.pow((large_block_size - 1) as u32) * PAGE_SIZE,
+            size_class: large_block_size - 1,
+            block_type: BlockType::RightBuddy
+        };
+
+        let mut allocator = BuddyAllocator::new(memory_map);
+        allocator.memory_blocks[large_block_size].push_front(large_block);
+
+        // WHEN
+        let split_block = allocator.split_block(5);
+
+        // THEN
+        assert!(split_block.is_ok());
+        assert_eq!(allocator.memory_blocks[large_block_size - 1].contains(&expected_left_buddy), true);
+        assert_eq!(allocator.memory_blocks[large_block_size - 1].contains(&expected_right_buddy), true);
     }
 }

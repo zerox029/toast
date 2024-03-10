@@ -24,24 +24,25 @@ use alloc::string::String;
 use core::panic::PanicInfo;
 use lazy_static::lazy_static;
 use limine::BaseRevision;
-use limine::memory_map::EntryType;
 use limine::request::{FramebufferRequest, HhdmRequest, MemoryMapRequest};
 use x86_64::registers::model_specific::Efer;
 use x86_64::registers::control::{Cr0, Cr0Flags, EferFlags};
-use crate::drivers::cpuid::CPU_INFO;
-use crate::drivers::ps2::init_ps2_controller;
-use crate::drivers::ps2::keyboard::PS2Keyboard;
-use crate::drivers::ps2::PS2DeviceType;
-use crate::fs::ext2::mount_filesystem;
+use drivers::cpuid::CPU_INFO;
+use drivers::ps2::init_ps2_controller;
+use drivers::ps2::keyboard::PS2Keyboard;
+use drivers::ps2::PS2DeviceType;
+use fs::ext2::mount_filesystem;
 use drivers::fbdev::FrameBufferDevice;
-use crate::fs::Vfs;
-use crate::graphics::framebuffer_device::Writer;
-use crate::interrupts::{INTERRUPT_CONTROLLER, InterruptController};
-use crate::memory::{MemoryManager, VirtualAddress};
-use crate::task::keyboard::print_key_inputs;
-use crate::task::executor::Executor;
-use crate::task::Task;
-use crate::utils::hcf;
+use fs::Vfs;
+use graphics::framebuffer_device::Writer;
+use interrupts::{INTERRUPT_CONTROLLER, InterruptController};
+use memory::{MemoryManager, VirtualAddress};
+use task::keyboard::print_key_inputs;
+use task::executor::Executor;
+use task::Task;
+use utils::hcf;
+
+#[cfg(test)]
 use crate::utils::tests::{exit_qemu, QemuExitCode, Testable};
 
 #[macro_use]
@@ -77,8 +78,6 @@ unsafe extern fn _entry() {
 
     #[cfg(test)]
     test_main();
-
-    serial_println!("here");
 
     hcf();
 }
@@ -133,22 +132,6 @@ unsafe fn init() {
     //executor.run();
 }
 
-fn print_memory_map() {
-    MEMORY_MAP_REQUEST.get_response().unwrap().entries().iter().for_each(|entry| {
-        match entry.entry_type {
-            EntryType::USABLE => serial_println!("usable entry from 0x{:X} to {:X}", entry.base, entry.base + entry.length),
-            EntryType::RESERVED => serial_println!("reserved entry from 0x{:X} to {:X}",  entry.base, entry.base + entry.length),
-            EntryType::ACPI_RECLAIMABLE => serial_println!("acpi recl entry from 0x{:X} to {:X}",  entry.base, entry.base + entry.length),
-            EntryType::ACPI_NVS => serial_println!("acpi nvs entry from 0x{:X} to {:X}",  entry.base, entry.base + entry.length),
-            EntryType::BAD_MEMORY => serial_println!("bad memory entry from 0x{:X} to {:X}",  entry.base, entry.base + entry.length),
-            EntryType::BOOTLOADER_RECLAIMABLE => serial_println!("bootloader recl entry from 0x{:X} to {:X}",  entry.base, entry.base + entry.length),
-            EntryType::KERNEL_AND_MODULES => serial_println!("kernel entry from 0x{:X} to {:X}",  entry.base, entry.base + entry.length),
-            EntryType::FRAMEBUFFER => serial_println!("framebuffer entry from 0x{:X} to {:X}",  entry.base, entry.base + entry.length),
-            _ => ()
-        }
-    });
-}
-
 #[cfg(not(test))]
 #[panic_handler]
 fn panic(info: &PanicInfo) -> ! {
@@ -175,9 +158,4 @@ pub fn test_runner(tests: &[&dyn Testable]) {
     }
 
     exit_qemu(QemuExitCode::Success);
-}
-
-#[test_case]
-fn trivial_assertion() {
-    assert_eq!(1, 1);
 }

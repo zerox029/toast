@@ -125,7 +125,7 @@ impl Mapper {
         let frame = self.unmap_no_dealloc(&page).unwrap();
 
         // TODO free p(1,2,3) table if empty
-        allocator.deallocate_frame(frame);
+        allocator.deallocate_frame(frame).expect("could not deallocate");
     }
 
     pub fn unmap_no_dealloc(&mut self, page: &Page) -> Option<Frame> {

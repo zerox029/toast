@@ -57,7 +57,6 @@ impl FrameBufferDevice {
 
         let devices = FB_DEVICES.lock();
         devices.iter().for_each(|device| {
-            serial_println!("{}", device.name);
             // Not sure cloning is the best idea here
             let fbdev = Arc::new(Mutex::new(Box::new(device.clone()) as Box<dyn VfsNode + Send>));
             Vfs::insert_child_node(parent.clone(), fbdev);

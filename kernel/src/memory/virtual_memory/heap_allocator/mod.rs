@@ -1,8 +1,6 @@
 mod bump_allocator;
 mod slab_allocator;
 
-use alloc::boxed::Box;
-use alloc::vec::Vec;
 use crate::memory::{VirtualAddress};
 use crate::memory::virtual_memory::heap_allocator::slab_allocator::SlabAllocator;
 use crate::memory::virtual_memory::paging::{ActivePageTable, Page};
@@ -63,10 +61,14 @@ pub fn init_heap<A>(frame_allocator: &mut A, page_table: &mut ActivePageTable) w
     serial_println!("mm: heap starts at 0x{:X}", HEAP_START);
 }
 
-// TODO: Setup custom test framework
-pub fn test_heap() {
-    // Simple allocation
-    {
+#[cfg(test)]
+mod tests {
+    use alloc::boxed::Box;
+    use alloc::vec::Vec;
+    use crate::memory::virtual_memory::heap_allocator::HEAP_SIZE;
+
+    #[test_case]
+    fn box_allocation() {
         let heap_value_1 = Box::new(41);
         let heap_value_2 = Box::new(13);
 
@@ -74,20 +76,22 @@ pub fn test_heap() {
         assert_eq!(*heap_value_2, 13);
     }
 
-    // Large vec
-    {
+    #[test_case]
+    fn large_vec() {
         let n =1000;
         let mut vec = Vec::new();
         for i in 0..n {
             vec.push(i);
         }
+
         assert_eq!(vec.iter().sum::<u64>(), (n - 1) * n / 2);
     }
 
-    // Many boxes
-    {
+    #[test_case]
+    fn many_boxes() {
         for i in 0..HEAP_SIZE {
             let x = Box::new(i);
+
             assert_eq!(*x, i);
         }
     }
