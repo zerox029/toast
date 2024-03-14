@@ -47,18 +47,18 @@ impl VirtualMemoryManager {
     }
 
     /// Allocates a single page in the kernel allocation space region
-    pub fn allocate_page(&mut self) -> Option<VirtualAddress> {
+    pub fn allocate_page(&mut self) -> Result<VirtualAddress, &'static str> {
         self.allocate_pages(1)
     }
 
-    pub fn allocate_pages(&mut self, count: usize) -> Option<VirtualAddress> {
+    pub fn allocate_pages(&mut self, count: usize) -> Result<VirtualAddress, &'static str> {
         let required_size = count * PAGE_SIZE;
 
         // Find the first region that is big enough to accommodate the allocation request
         let mut region = None;
         let split_key = match self.free_regions.range(SizeKey{size: required_size, index: 0}..).next() {
             Some((k, _)) => *k,
-            None => panic!("vmm: could not allocate memory")
+            None => return Err("vmm: could not allocate memory")
         };
         if let Some((removed_key, _)) = self.free_regions.split_off(&split_key).into_iter().next() {
             region = self.free_regions.remove_entry(&removed_key);
@@ -78,7 +78,7 @@ impl VirtualMemoryManager {
 
             if let Some(removed_address) = removed_address {
                 if removed_address.1 != region.0.size {
-                    panic!("vmm: fatal mismatch between vmemory trees when allocating {} pages", count);
+                    return Err("vmm: fatal mismatch between vmemory trees when allocating memory");
                 }
 
                 // Shrink the region if it can fit the requested size
@@ -89,20 +89,20 @@ impl VirtualMemoryManager {
                     self.free_addresses.insert(new_start_address, new_size);
                 }
 
-                return Some(removed_address.0)
+                return Ok(removed_address.0)
             }
 
-            panic!("vmm: fatal mismatch between vmemory trees when allocating {} pages", count);
+            return Err("vmm: fatal mismatch between vmemory trees when allocating {} pages");
         }
 
-        None
+        Err("vmm: could not allocate requested memory")
     }
 
-    pub fn deallocate_page(&mut self, address: VirtualAddress) {
-        self.deallocate_pages(address, PAGE_SIZE);
+    pub fn deallocate_page(&mut self, address: VirtualAddress) -> Result<(), &'static str> {
+        self.deallocate_pages(address, PAGE_SIZE)
     }
 
-    pub fn deallocate_pages(&mut self, start_address: VirtualAddress, size: usize) {
+    pub fn deallocate_pages(&mut self, start_address: VirtualAddress, size: usize) -> Result<(), &'static str> {
         // If neighbouring region is unallocated, merge it with the one currently being freed
         if let Some(left_region) = self.free_addresses.range_mut(..start_address).next_back() {
             // Check if region is a direct neighbour
@@ -112,23 +112,36 @@ impl VirtualMemoryManager {
 
                 // Sync the other tree
                 let removed_region = self.free_regions
-                    .remove_entry(&SizeKey{ size: *left_region.1 - size, index: *left_region.0})
-                    .expect("vmm: fatal mismatch between vmemory trees when freeing page");
-                self.free_regions.insert(SizeKey{ size: removed_region.0.size + size, index: removed_region.0.index }, removed_region.1);
+                    .remove_entry(&SizeKey{ size: *left_region.1 - size, index: *left_region.0});
+
+                return match removed_region {
+                    None => Err("vmm: fatal mismatch between vmemory trees when freeing page"),
+                    Some(removed_region) => {
+                        self.free_regions.insert(SizeKey { size: removed_region.0.size + size, index: removed_region.0.index }, removed_region.1);
+                        Ok(())
+                    }
+                }
             }
         }
-        else if let Some(removed_region) = self.free_addresses.remove_entry(&(start_address + size)) {
+
+        return if let Some(removed_region) = self.free_addresses.remove_entry(&(start_address + size)) {
             self.free_addresses.insert(start_address, removed_region.1 + size);
 
             // Sync the other tree
-            self.free_regions.remove_entry(&SizeKey{size: removed_region.1, index: removed_region. 0});
-            self.free_regions.insert(SizeKey{size: removed_region.1 + size, index: start_address}, start_address);
+            self.free_regions.remove_entry(&SizeKey { size: removed_region.1, index: removed_region.0 });
+            self.free_regions.insert(SizeKey { size: removed_region.1 + size, index: start_address }, start_address);
+
+            Ok(())
         }
 
         // If both neighbouring regions are allocated, just reinsert the region
         else {
             self.free_addresses.insert(start_address, size);
-            self.free_regions.insert(SizeKey{size, index: start_address}, start_address);
+            self.free_regions.insert(SizeKey { size, index: start_address }, start_address);
+
+            Ok(())
         }
+
+        // TODO: Return Err if requested memory is already free
     }
 }

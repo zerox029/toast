@@ -68,9 +68,9 @@ impl Writer {
     }
 
     /// This function is unsafe because it should only be called once the heap is set up
-    pub unsafe fn init() {
+    pub unsafe fn init() -> Result<(), &'static str> {
         if FB_DEVICES.lock().len() <= 0 {
-            panic!("no framebuffer found");
+            return Err("no framebuffer found");
         }
 
         let framebuffer = &FB_DEVICES.lock()[0];
@@ -88,7 +88,7 @@ impl Writer {
             screen_buffer,
         };
 
-        INSTANCE.try_init_once(|| Mutex::new(writer)).expect("Cannot initialize the framebuffer more than once");
+        INSTANCE.try_init_once(|| Mutex::new(writer)).or(Err("Cannot initialize the framebuffer more than once"))
     }
 
     fn write_char(&mut self, screen_char: ScreenChar) {

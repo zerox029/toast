@@ -1,13 +1,11 @@
+use alloc::string::{String, ToString};
 use core::str;
 use core::arch::asm;
-use lazy_static::lazy_static;
-use spin::Mutex;
+use conquer_once::spin::OnceCell;
 use crate::utils::{any_as_u8_slice};
 use crate::utils::bitutils::is_nth_bit_set;
 
-lazy_static! {
-    pub static ref CPU_INFO: Mutex<CPUInfo> = Mutex::new(CPUInfo::get_current_cpu_info());
-}
+static CPU_INFO: OnceCell<CPUInfo> = OnceCell::uninit();
 
 struct CPUVendorResponse {
     ebx: u32,
@@ -36,18 +34,33 @@ pub enum CPUVendor {
 }
 
 pub struct CPUInfo {
-    pub vendor: CPUVendor,
-    pub is_apic_supported: bool
+    vendor: CPUVendor,
+    is_apic_supported: bool,
+    brand_string: String,
 }
 
 impl CPUInfo {
-    pub fn get_current_cpu_info() -> CPUInfo {
+    fn instance() -> Result<&'static CPUInfo, &'static str> {
+        return match CPU_INFO.get() {
+            Some(cpu) => Ok(cpu),
+            None => {
+                match CPU_INFO.try_init_once(|| Self::get_current_cpu_info()) {
+                    Ok(_) => Ok(CPU_INFO.get().unwrap()),
+                    Err(_) => Err("cpuid: cannot initialize CPU more than once")
+                }
+            }
+        }
+
+    }
+
+    fn get_current_cpu_info() -> CPUInfo {
         info!("cpu: getting cpu info...");
 
         unsafe {
             Self {
                 vendor: Self::get_vendor(),
                 is_apic_supported: Self::get_apic_support(),
+                brand_string: Self::get_brand_string(),
             }
         }
     }
@@ -82,7 +95,7 @@ impl CPUInfo {
         is_nth_bit_set(edx as usize, 9)
     }
 
-    pub unsafe fn print_brand(&self) {
+    pub unsafe fn get_brand_string() -> String {
         let eax: u32;
         let ebx: u32;
         let ecx: u32;
@@ -117,8 +130,15 @@ impl CPUInfo {
         asm!("mov {:e}, edx", out(reg) edx3, options(nomem, nostack, preserves_flags));
 
         let brand_response = BrandStringResponse { eax, ebx, ecx, edx, eax2, ebx2, ecx2, edx2, eax3, ebx3, ecx3, edx3, };
-        let brand_string= str::from_utf8(any_as_u8_slice(&brand_response)).unwrap();
+        str::from_utf8(any_as_u8_slice(&brand_response)).unwrap().to_string()
+    }
 
-        info!("cpu: {}", brand_string);
+    pub fn print_cpu_info() {
+        let cpu_info = Self::instance();
+
+        match cpu_info {
+            Ok(cpu_info) => info!("{}", cpu_info.brand_string),
+            Err(err) => error!("{}", err),
+        }
     }
 }

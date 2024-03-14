@@ -27,7 +27,6 @@ use limine::BaseRevision;
 use limine::request::{FramebufferRequest, HhdmRequest, MemoryMapRequest};
 use x86_64::registers::model_specific::Efer;
 use x86_64::registers::control::{Cr0, Cr0Flags, EferFlags};
-use drivers::cpuid::CPU_INFO;
 use drivers::ps2::init_ps2_controller;
 use drivers::ps2::keyboard::PS2Keyboard;
 use drivers::ps2::PS2DeviceType;
@@ -41,6 +40,7 @@ use task::keyboard::print_key_inputs;
 use task::executor::Executor;
 use task::Task;
 use utils::hcf;
+use crate::drivers::cpuid::CPUInfo;
 
 #[cfg(test)]
 use crate::utils::tests::{exit_qemu, QemuExitCode, Testable};
@@ -83,18 +83,20 @@ unsafe extern fn _entry() {
 }
 
 unsafe fn init() {
-    MemoryManager::init(MEMORY_MAP_REQUEST.get_response().expect("could not retrieve the kernel address"));
+    if let Err(err) = MemoryManager::init(MEMORY_MAP_REQUEST.get_response().expect("could not retrieve the memory map")) {
+        panic!("{}", err);
+    };
 
     FRAMEBUFFER_REQUEST.get_response().expect("could not retrieve the frame buffer").framebuffers().for_each(|fbdev| {
         FrameBufferDevice::init(&fbdev, String::from("fb0"));
     });
-    Writer::init();
+    Writer::init().expect("could not initialize the framebuffer");
 
     Vfs::init();
     FrameBufferDevice::register_devices();
 
     info!("Toast version v0.0.1-x86_64");
-    unsafe { CPU_INFO.lock().print_brand(); }
+    CPUInfo::print_cpu_info();
 
     unsafe {
         Efer::write(EferFlags::NO_EXECUTE_ENABLE);
@@ -107,7 +109,7 @@ unsafe fn init() {
     // init_acpi(boot_info); // TODO: This broke at some point, fix it
 
     let mut ahci_devices = drivers::pci::ahci::init();
-    let _fs = mount_filesystem(&mut ahci_devices[0]);
+    let fs = mount_filesystem(&mut ahci_devices[0]);
 
     /*
     let file_name = "/files/file.txt";
@@ -135,7 +137,7 @@ unsafe fn init() {
 #[cfg(not(test))]
 #[panic_handler]
 fn panic(info: &PanicInfo) -> ! {
-    println!("{}", info);
+    error!("{}", info);
 
     loop {}
 }

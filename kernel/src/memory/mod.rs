@@ -27,7 +27,7 @@ pub struct MemoryManager {
 }
 
 impl MemoryManager {
-    pub fn init(memory_map: &'static MemoryMapResponse) {
+    pub fn init(memory_map: &'static MemoryMapResponse) -> Result<(), &'static str>{
         serial_println!("mm: init...");
 
         let mut linear_allocator = LinearFrameAllocator::new(memory_map);
@@ -38,7 +38,7 @@ impl MemoryManager {
 
         // Switch to the buddy allocator
         let mut buddy_allocator = BuddyAllocator::new(memory_map);
-        buddy_allocator.set_allocated_frames(linear_allocator.allocated_frames()).expect("mm: could not set allocated frames when switching allocators");
+        buddy_allocator.set_allocated_frames(linear_allocator.allocated_frames())?;
 
         let memory_manager = Self {
             frame_allocator: buddy_allocator,
@@ -46,7 +46,10 @@ impl MemoryManager {
             virtual_memory_manager: VirtualMemoryManager::new(),
         };
 
-        INSTANCE.try_init_once(|| Mutex::new(memory_manager)).expect("mm: cannot initialize memory manager more than once");
+        return match INSTANCE.try_init_once(|| Mutex::new(memory_manager)) {
+            Err(_) => Err("mm: cannot initialize memory manager more than once"),
+            Ok(_) => Ok(())
+        }
     }
 
     pub fn instance() -> &'static Mutex<MemoryManager> {
@@ -58,7 +61,7 @@ impl MemoryManager {
 
         let mut memory_manager = MemoryManager::instance().lock();
 
-        if let Some(virtual_alloc) = memory_manager.virtual_memory_manager.allocate_pages(page_count) {
+        if let Ok(virtual_alloc) = memory_manager.virtual_memory_manager.allocate_pages(page_count) {
             for i in 0..page_count {
                 let page_address = virtual_alloc + i * PAGE_SIZE;
                 let page = Page::containing_address(page_address);
