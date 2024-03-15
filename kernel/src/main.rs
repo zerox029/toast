@@ -21,6 +21,7 @@ extern crate downcast_rs;
 extern crate alloc;
 
 use alloc::string::String;
+use core::any::Any;
 use core::panic::PanicInfo;
 use lazy_static::lazy_static;
 use limine::BaseRevision;

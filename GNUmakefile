@@ -44,6 +44,10 @@ all-hdd: $(IMAGE_NAME).hdd
 run: $(IMAGE_NAME).iso
 	@qemu-system-x86_64 $(qemu_flags) -m 4G -no-reboot
 
+run-tests: $(IMAGE_NAME).iso-test
+	@qemu-system-x86_64 $(qemu_flags) -m 4G -no-reboot -device isa-debug-exit,iobase=0xf4,iosize=0x04 -display none || [ $$? -eq 33 ]
+	@exit 0
+
 run-with-log: $(IMAGE_NAME).iso
 	@qemu-system-x86_64 $(qemu_flags) -d int -no-reboot
 
@@ -78,7 +82,27 @@ limine:
 kernel:
 	@$(MAKE) -C kernel
 
+kernel-test:
+	@$(MAKE) -C kernel test
+
 $(IMAGE_NAME).iso: limine kernel
+	@rm -rf iso_root
+	@mkdir -p iso_root/boot
+	@cp -v kernel/kernel iso_root/boot/
+	@mkdir -p iso_root/boot/limine
+	@cp -v limine.cfg limine/limine-bios.sys limine/limine-bios-cd.bin limine/limine-uefi-cd.bin iso_root/boot/limine/
+	@mkdir -p iso_root/EFI/BOOT
+	@cp -v limine/BOOTX64.EFI iso_root/EFI/BOOT/
+	@cp -v limine/BOOTIA32.EFI iso_root/EFI/BOOT/
+	@xorriso -as mkisofs -b boot/limine/limine-bios-cd.bin \
+		-no-emul-boot -boot-load-size 4 -boot-info-table \
+		--efi-boot boot/limine/limine-uefi-cd.bin \
+		-efi-boot-part --efi-boot-image --protective-msdos-label \
+		iso_root -o $(IMAGE_NAME).iso 2> /dev/null
+	@./limine/limine bios-install $(IMAGE_NAME).iso 2> /dev/null
+	@rm -rf iso_root
+
+$(IMAGE_NAME).iso-test: limine kernel-test
 	@rm -rf iso_root
 	@mkdir -p iso_root/boot
 	@cp -v kernel/kernel iso_root/boot/
