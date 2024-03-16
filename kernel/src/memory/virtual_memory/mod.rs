@@ -31,6 +31,7 @@ struct SizeKey {
 pub struct VirtualMemoryManager {
     free_addresses: BTreeMap<VirtualAddress, usize>,
     free_regions: BTreeMap<SizeKey, VirtualAddress>,
+    allocated_amount: usize,
 }
 
 impl VirtualMemoryManager {
@@ -46,7 +47,17 @@ impl VirtualMemoryManager {
         Self {
             free_addresses,
             free_regions,
+            allocated_amount: 0,
         }
+    }
+
+    pub fn get_allocated_amount(&self) -> usize {
+        self.allocated_amount
+    }
+
+    pub fn display_memory(&self) {
+        println!("free regions: {:X?}", self.free_regions);
+        println!("free addresses: {:X?}", self.free_addresses);
     }
 
     /// Allocates a single page in the kernel allocation space region
@@ -89,6 +100,7 @@ impl VirtualMemoryManager {
                     self.free_addresses.insert(new_start_address, new_size);
                 }
 
+                self.allocated_amount += required_size;
                 return Ok(removed_address.0)
             }
 
@@ -102,40 +114,47 @@ impl VirtualMemoryManager {
         self.deallocate_pages(address, PAGE_SIZE)
     }
 
-    pub fn deallocate_pages(&mut self, start_address: VirtualAddress, size: usize) -> Result<(), &'static str> {
+    pub fn deallocate_pages(&mut self, start_address: VirtualAddress, count: usize) -> Result<(), &'static str> {
+        let required_size = count * PAGE_SIZE;
+
         // If neighbouring left region is unallocated, merge it with the one currently being freed
         if let Some(left_region) = self.free_addresses.range_mut(..start_address).next_back() {
             // Check if region is a direct neighbour
             if *left_region.0 + *left_region.1 == start_address {
                 // Increase the region's size
-                *left_region.1 += size;
+                *left_region.1 += required_size;
 
                 // Sync the other tree
                 let removed_region = self.free_regions
-                    .remove_entry(&SizeKey{ size: *left_region.1 - size, index: *left_region.0});
+                    .remove_entry(&SizeKey{ size: *left_region.1 - required_size, index: *left_region.0});
 
                 return match removed_region {
                     None => Err("vmm: fatal mismatch between vmemory trees when freeing page"),
                     Some(removed_region) => {
-                        self.free_regions.insert(SizeKey { size: removed_region.0.size + size, index: removed_region.0.index }, removed_region.1);
+                        self.free_regions.insert(SizeKey { size: removed_region.0.size + required_size, index: removed_region.0.index }, removed_region.1);
+                        self.allocated_amount -= required_size;
                         Ok(())
                     }
                 }
             }
         }
 
-        return if let Some(removed_region) = self.free_addresses.remove_entry(&(start_address + size)) {
-            self.free_addresses.insert(start_address, removed_region.1 + size);
+        return if let Some(removed_region) = self.free_addresses.remove_entry(&(start_address + count)) {
+            self.free_addresses.insert(start_address, removed_region.1 + count);
 
             // Sync the other tree
             self.free_regions.remove_entry(&SizeKey { size: removed_region.1, index: removed_region.0 });
-            self.free_regions.insert(SizeKey { size: removed_region.1 + size, index: start_address }, start_address);
+            self.free_regions.insert(SizeKey { size: removed_region.1 + count, index: start_address }, start_address);
+
+            self.allocated_amount -= required_size;
 
             Ok(())
         }
         else { // If both neighbouring regions are allocated, just reinsert the region
-            self.free_addresses.insert(start_address, size);
-            self.free_regions.insert(SizeKey { size, index: start_address }, start_address);
+            self.free_addresses.insert(start_address, count);
+            self.free_regions.insert(SizeKey { size: count, index: start_address }, start_address);
+
+            self.allocated_amount -= required_size;
 
             Ok(())
         }

@@ -1,6 +1,11 @@
+use alloc::string::String;
+use conquer_once::spin::OnceCell;
+use spin::Mutex;
+use crate::debugger::{run_command, run_debug_shell};
 use crate::drivers::ps2::{DATA_PORT, PS2Device, PS2DeviceType, PS2Port};
 use crate::drivers::ps2::PS2DeviceType::MF2Keyboard;
 use crate::graphics::framebuffer_device;
+use crate::graphics::framebuffer_device::Writer;
 
 #[repr(u8)]
 enum Command {
@@ -49,7 +54,7 @@ const SCANCODE_SET_1: [char; 83] = [
     '\0', '\0', '7', '8', '9', '-', '4', '5', '6', '+', '1', '2', '3', '0', '.'
 ];
 
-#[derive(Debug, Copy, Clone)]
+#[derive(Debug, Clone)]
 pub struct PS2Keyboard {
     port: PS2Port,
 
@@ -63,6 +68,9 @@ pub struct PS2Keyboard {
     is_rcontrol: bool,
     is_lalt: bool,
     is_ralt: bool,
+
+    current_line: String,
+    is_debug: bool,
 
     is_reading_extended_keycode: bool,
 }
@@ -83,6 +91,9 @@ impl PS2Keyboard {
             is_lalt: false,
             is_ralt: false,
 
+            current_line: String::from(""),
+            is_debug: false,
+
             is_reading_extended_keycode: false,
         }
     }
@@ -96,9 +107,22 @@ impl PS2Keyboard {
         match scancode {
             0x54..=0x56 | 0x59..=0x80 => (), // Not mapped, maybe want to ask to resend last byte?
             0x01 => (), // Escape pressed,
-            0x1C => (), // Enter pressed TODO
-            0x3B..=0x44 | 0x57 | 0x58 => (), // Fn keys pressed
-            0x0E => framebuffer_device::backspace(), // Backspace pressed
+            0x1C => {
+                if(self.is_debug) {
+                    print!("\n");
+                    run_command(&self.current_line);
+                    self.current_line = String::from("");
+                }
+            }, // Enter pressed
+            0x3B..=0x44 | 0x57 => (), // Fn keys pressed
+            0x58 => {
+                self.is_debug = true;
+                run_debug_shell();
+            }, // F12
+            0x0E => {
+                self.current_line.pop();
+                framebuffer_device::backspace()
+            }, // Backspace pressed
             0x0F => println!("  "), // Tab pressed
             0x1D => self.is_lcontrol = true,
 
@@ -123,10 +147,12 @@ impl PS2Keyboard {
 
             _ => if scancode as usize <= SCANCODE_SET_1.len() {
                 if self.is_caps() {
+                    self.current_line.push(SCANCODE_SET_1[scancode as usize - 1]);
                     print!("{}", SCANCODE_SET_1[scancode as usize - 1]);
                 }
                 else {
-                    print!("{}", SCANCODE_SET_1[scancode as usize - 1].to_lowercase());
+                    self.current_line.push(SCANCODE_SET_1[scancode as usize - 1].to_ascii_lowercase());
+                    print!("{}", SCANCODE_SET_1[scancode as usize - 1].to_ascii_lowercase());
                 }
             }
         }

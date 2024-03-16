@@ -3,6 +3,7 @@ use core::sync::atomic::{compiler_fence, Ordering};
 use spin::Mutex;
 use crate::arch::x86_64::port_manager::{io_wait, Port};
 use crate::arch::x86_64::port_manager::ReadWriteStatus::{ReadWrite, WriteOnly};
+use crate::interrupts::global_descriptor_table::GdtDescriptor;
 use crate::interrupts::interrupt_descriptor_table::*;
 use crate::interrupts::interrupt_service_routines::*;
 use crate::memory::VirtualAddress;

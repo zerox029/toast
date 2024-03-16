@@ -12,7 +12,7 @@ use crate::serial::serial_print;
 
 const DEFAULT_COLOR_CODE: ColorCode = ColorCode::new(Rgb8(0xFFFFFF), Rgb8(0));
 
-pub static INSTANCE: OnceCell<Mutex<Writer>> = OnceCell::uninit();
+static INSTANCE: OnceCell<Mutex<Writer>> = OnceCell::uninit();
 
 pub enum LogLevel {
     Info,
@@ -151,6 +151,16 @@ impl Writer {
                 for col in 0..self.buffer_width {
                     self.screen_buffer[row][col] = None;
                 }
+            }
+        }
+    }
+
+    pub fn clear_screen(&mut self) {
+        if let Some(framebuffer_response) = FRAMEBUFFER_REQUEST.get_response() {
+            if let Some(framebuffer) = framebuffer_response.framebuffers().next() {
+                self.screen_buffer = vec![vec![None; self.buffer_width]; self.buffer_height];
+                self.column_position = 0;
+                unsafe { framebuffer.addr().write_bytes(0, (framebuffer.height() * framebuffer.width() * 4) as usize) }
             }
         }
     }

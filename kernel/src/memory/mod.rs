@@ -22,9 +22,9 @@ pub const PAGE_SIZE: usize = 4096;
 
 pub static INSTANCE: OnceCell<Mutex<MemoryManager>> = OnceCell::uninit();
 pub struct MemoryManager {
-    frame_allocator: BuddyAllocator,
-    active_page_table: ActivePageTable,
-    virtual_memory_manager: VirtualMemoryManager,
+    pub frame_allocator: BuddyAllocator,
+    pub active_page_table: ActivePageTable,
+    pub virtual_memory_manager: VirtualMemoryManager,
 }
 
 impl MemoryManager {
@@ -58,6 +58,14 @@ impl MemoryManager {
 
     pub fn instance() -> &'static Mutex<MemoryManager> {
         INSTANCE.try_get().expect("mm: memory manager uninitialized")
+    }
+
+    /// Returns the total amount of allocated memory in the form of a tuple. The first element
+    /// represents the physical memory and the second represents the virtual memory
+    pub fn get_allocated_memory_amount() -> (usize, usize) {
+        let mut memory_manager = MemoryManager::instance().lock();
+
+        (memory_manager.frame_allocator.get_allocated_amount(), memory_manager.virtual_memory_manager.get_allocated_amount())
     }
 
     pub fn vmm_alloc(size: usize, flags: EntryFlags) -> Option<VirtualAddress> {

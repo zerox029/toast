@@ -33,6 +33,7 @@ enum BlockType {
 type MemoryBlocks = [LinkedList<MemoryBlock>; MAX_ORDER + 1];
 pub struct BuddyAllocator {
     memory_blocks: MemoryBlocks,
+    allocated_amount: usize,
 }
 
 #[derive(Debug, Copy, Clone, Eq, PartialEq)]
@@ -72,7 +73,17 @@ impl BuddyAllocator {
 
         Self {
             memory_blocks,
+            allocated_amount: 0,
         }
+    }
+
+    /// Returns the total amount of memory allocated by this allocator
+    pub fn get_allocated_amount(&self) -> usize {
+        self.allocated_amount
+    }
+
+    pub fn display_memory(&self) {
+        println!("{:?}", self.memory_blocks);
     }
 
     /// Marks the specified frames as allocated. This is mostly used when transitioning
@@ -100,10 +111,16 @@ impl BuddyAllocator {
             let block = first_free_block.unwrap();
             block.is_allocated = true;
 
-
+            self.allocated_amount += 2usize.pow(order as u32) * PAGE_SIZE;
             Ok(block.starting_address)
         } else {
-            self.split_block(order + 1)
+            let alloc = self.split_block(order + 1);
+
+            if alloc.is_ok() {
+                self.allocated_amount += 2usize.pow(order as u32) * PAGE_SIZE;
+            }
+
+            alloc
         }
     }
 
@@ -125,6 +142,7 @@ impl BuddyAllocator {
 
             // Merge only if block is a buddy
             if memory_block.block_type == BlockType::TopLevel {
+                self.allocated_amount -= 2usize.pow(order as u32) * PAGE_SIZE;
                 return Ok(());
             }
 
@@ -163,6 +181,7 @@ impl BuddyAllocator {
             }
         }
 
+        self.allocated_amount -= 2usize.pow(order as u32) * PAGE_SIZE;
         Ok(())
     }
 
@@ -219,6 +238,7 @@ impl BuddyAllocator {
             }
         }
 
+        self.allocated_amount += PAGE_SIZE;
         Ok(current_block_clone.starting_address)
     }
 

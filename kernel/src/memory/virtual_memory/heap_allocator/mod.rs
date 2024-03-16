@@ -7,7 +7,7 @@ use crate::memory::virtual_memory::paging::entry::EntryFlags;
 use crate::memory::physical_memory::FrameAllocator;
 
 pub const HEAP_START: VirtualAddress = 0xFFFFC90000000000;
-pub const HEAP_SIZE: usize = 200 * 1024; // 1 MiB
+pub const HEAP_SIZE: usize = 1000 * 1024; // 1 MiB
 
 #[global_allocator]
 static ALLOCATOR: Locked<SlabAllocator> = Locked::new(SlabAllocator::new());
