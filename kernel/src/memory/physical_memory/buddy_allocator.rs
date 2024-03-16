@@ -100,6 +100,7 @@ impl BuddyAllocator {
             let block = first_free_block.unwrap();
             block.is_allocated = true;
 
+
             Ok(block.starting_address)
         } else {
             self.split_block(order + 1)

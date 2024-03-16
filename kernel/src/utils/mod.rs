@@ -21,7 +21,7 @@ pub fn hcf() -> ! {
     }
 }
 
-fn print_memory_map() {
+pub fn print_memory_map() {
     MEMORY_MAP_REQUEST.get_response().unwrap().entries().iter().for_each(|entry| {
         match entry.entry_type {
             EntryType::USABLE => serial_println!("usable entry from 0x{:X} to {:X}", entry.base, entry.base + entry.length),

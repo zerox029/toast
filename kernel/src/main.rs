@@ -20,6 +20,7 @@
 extern crate downcast_rs;
 extern crate alloc;
 
+use alloc::boxed::Box;
 use alloc::string::String;
 use core::any::Any;
 use core::panic::PanicInfo;
@@ -42,6 +43,7 @@ use task::executor::Executor;
 use task::Task;
 use utils::hcf;
 use crate::drivers::cpuid::CPUInfo;
+use crate::utils::print_memory_map;
 
 #[cfg(test)]
 use crate::utils::tests::{exit_qemu, QemuExitCode, Testable};
@@ -74,6 +76,8 @@ pub static HHDM_REQUEST: HhdmRequest = HhdmRequest::new();
 #[allow(clippy::missing_safety_doc)]
 unsafe extern fn _entry() {
     assert!(BASE_REVISION.is_supported());
+
+    print_memory_map();
 
     init();
 
@@ -130,7 +134,7 @@ unsafe fn init() {
         }
     }
 
-    //print!(">");
+    print!(">");
 
     //executor.run();
 }

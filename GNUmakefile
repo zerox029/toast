@@ -52,7 +52,7 @@ run-with-log: $(IMAGE_NAME).iso
 	@qemu-system-x86_64 $(qemu_flags) -d int -no-reboot
 
 debug: $(IMAGE_NAME).iso
-	@qemu-system-x86_64 $(qemu_flags) -S
+	@qemu-system-x86_64 $(qemu_flags) -S -m 4G
 
 gdb:
 	@gdb kernel/kernel -ex "target remote :1234"

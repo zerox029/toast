@@ -7,7 +7,7 @@ use crate::memory::virtual_memory::paging::entry::EntryFlags;
 use crate::memory::physical_memory::FrameAllocator;
 
 pub const HEAP_START: VirtualAddress = 0xFFFFC90000000000;
-pub const HEAP_SIZE: usize = 1000 * 1024; // 1 MiB
+pub const HEAP_SIZE: usize = 200 * 1024; // 1 MiB
 
 #[global_allocator]
 static ALLOCATOR: Locked<SlabAllocator> = Locked::new(SlabAllocator::new());
@@ -85,7 +85,6 @@ mod tests {
         assert_eq!(vec.iter().sum::<u64>(), (n - 1) * n / 2);
     }
 
-    /*
     #[test_case]
     fn many_boxes() {
         for i in 0..HEAP_SIZE {
@@ -93,5 +92,5 @@ mod tests {
 
             assert_eq!(*x, i);
         }
-    }*/
+    }
 }

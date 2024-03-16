@@ -8,6 +8,7 @@ use self::virtual_memory::paging::ActivePageTable;
 use self::virtual_memory::paging::entry::EntryFlags;
 use self::virtual_memory::heap_allocator::init_heap;
 use crate::memory::physical_memory::{Frame, FrameAllocator};
+use crate::memory::virtual_memory::heap_allocator::HEAP_SIZE;
 use crate::memory::virtual_memory::paging::Page;
 use crate::memory::virtual_memory::VirtualMemoryManager;
 
@@ -40,10 +41,13 @@ impl MemoryManager {
         let mut buddy_allocator = BuddyAllocator::new(memory_map);
         buddy_allocator.set_allocated_frames(linear_allocator.allocated_frames())?;
 
+        let mut vmm = VirtualMemoryManager::new();
+        vmm.allocate_pages(HEAP_SIZE / PAGE_SIZE)?;
+
         let memory_manager = Self {
             frame_allocator: buddy_allocator,
             active_page_table,
-            virtual_memory_manager: VirtualMemoryManager::new(),
+            virtual_memory_manager: vmm,
         };
 
         return match INSTANCE.try_init_once(|| Mutex::new(memory_manager)) {
