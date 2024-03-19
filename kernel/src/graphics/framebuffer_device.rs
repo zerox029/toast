@@ -2,7 +2,7 @@ use alloc::{vec};
 use alloc::vec::Vec;
 use core::fmt::Write;
 use conquer_once::spin::OnceCell;
-use rlibc::memcpy;
+use rlibc::{memcpy, memmove};
 use spin::Mutex;
 use crate::{FRAMEBUFFER_REQUEST, serial_println};
 use crate::drivers::fbdev::FB_DEVICES;
@@ -60,6 +60,9 @@ pub struct Writer {
     buffer_height: usize,
     column_position: usize,
     screen_buffer: Vec<Vec<Option<ScreenChar>>>,
+
+    buffer_pixel_height: usize,
+    buffer_pixel_width: usize,
 }
 
 impl Writer {
@@ -75,8 +78,10 @@ impl Writer {
 
         let framebuffer = &FB_DEVICES.lock()[0];
 
-        let buffer_width = framebuffer.screen_info.width as usize / FONT_WIDTH;
-        let buffer_height = framebuffer.screen_info.height as usize / FONT_HEIGHT;
+        let buffer_pixel_width = framebuffer.screen_info.width as usize;
+        let buffer_pixel_height = framebuffer.screen_info.height as usize;
+        let buffer_width = buffer_pixel_width / FONT_WIDTH;
+        let buffer_height = buffer_pixel_height / FONT_HEIGHT;
 
         let screen_buffer = vec![vec![None; buffer_width]; buffer_height];
 
@@ -86,6 +91,8 @@ impl Writer {
             buffer_height,
             column_position: 0,
             screen_buffer,
+            buffer_pixel_width,
+            buffer_pixel_height,
         };
 
         INSTANCE.try_init_once(|| Mutex::new(writer)).or(Err("Cannot initialize the framebuffer more than once"))
@@ -166,6 +173,17 @@ impl Writer {
     }
 
     fn new_line(&mut self) {
+        if let Some(framebuffer_response) = FRAMEBUFFER_REQUEST.get_response() {
+            if let Some(framebuffer) = framebuffer_response.framebuffers().next() {
+                let pixel_offset = (1 * FONT_HEIGHT) * framebuffer.pitch() as usize;
+                let start_row = unsafe { framebuffer.addr().add(pixel_offset) };
+                unsafe { memmove(framebuffer.addr(), start_row, (framebuffer.width() * framebuffer.height() * 4 - framebuffer.width() * FONT_HEIGHT as u64 * 4) as usize); }
+            }
+        }
+
+        self.clear_row(self.buffer_height - 1);
+        self.column_position = 0;
+        /*
         for row in 1..self.buffer_height {
             for col in 0..self.buffer_width {
                 let bottom_character = self.screen_buffer[row][col];
@@ -183,7 +201,7 @@ impl Writer {
         }
 
         self.clear_row(self.buffer_height - 1);
-        self.column_position = 0;
+        self.column_position = 0;*/
     }
 }
 

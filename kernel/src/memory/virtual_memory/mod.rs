@@ -114,47 +114,45 @@ impl VirtualMemoryManager {
         self.deallocate_pages(address, PAGE_SIZE)
     }
 
-    pub fn deallocate_pages(&mut self, start_address: VirtualAddress, count: usize) -> Result<(), &'static str> {
-        let required_size = count * PAGE_SIZE;
-
+    pub fn deallocate_pages(&mut self, start_address: VirtualAddress, size: usize) -> Result<(), &'static str> {
         // If neighbouring left region is unallocated, merge it with the one currently being freed
         if let Some(left_region) = self.free_addresses.range_mut(..start_address).next_back() {
             // Check if region is a direct neighbour
             if *left_region.0 + *left_region.1 == start_address {
                 // Increase the region's size
-                *left_region.1 += required_size;
+                *left_region.1 += size;
 
                 // Sync the other tree
                 let removed_region = self.free_regions
-                    .remove_entry(&SizeKey{ size: *left_region.1 - required_size, index: *left_region.0});
+                    .remove_entry(&SizeKey{ size: *left_region.1 - size, index: *left_region.0});
 
                 return match removed_region {
                     None => Err("vmm: fatal mismatch between vmemory trees when freeing page"),
                     Some(removed_region) => {
-                        self.free_regions.insert(SizeKey { size: removed_region.0.size + required_size, index: removed_region.0.index }, removed_region.1);
-                        self.allocated_amount -= required_size;
+                        self.free_regions.insert(SizeKey { size: removed_region.0.size + size, index: removed_region.0.index }, removed_region.1);
+                        self.allocated_amount -= size;
                         Ok(())
                     }
                 }
             }
         }
 
-        return if let Some(removed_region) = self.free_addresses.remove_entry(&(start_address + count)) {
-            self.free_addresses.insert(start_address, removed_region.1 + count);
+        return if let Some(removed_region) = self.free_addresses.remove_entry(&(start_address + size)) {
+            self.free_addresses.insert(start_address, removed_region.1 + size);
 
             // Sync the other tree
             self.free_regions.remove_entry(&SizeKey { size: removed_region.1, index: removed_region.0 });
-            self.free_regions.insert(SizeKey { size: removed_region.1 + count, index: start_address }, start_address);
+            self.free_regions.insert(SizeKey { size: removed_region.1 + size, index: start_address }, start_address);
 
-            self.allocated_amount -= required_size;
+            self.allocated_amount -= size;
 
             Ok(())
         }
         else { // If both neighbouring regions are allocated, just reinsert the region
-            self.free_addresses.insert(start_address, count);
-            self.free_regions.insert(SizeKey { size: count, index: start_address }, start_address);
+            self.free_addresses.insert(start_address, size);
+            self.free_regions.insert(SizeKey { size, index: start_address }, start_address);
 
-            self.allocated_amount -= required_size;
+            self.allocated_amount -= size;
 
             Ok(())
         }
@@ -182,6 +180,7 @@ mod tests {
         // THEN
         assert!(alloc.is_ok()); // Allocated memory correctly
         assert_eq!(*vmm.free_addresses.values().next().expect("no free regions left"), expected_region_size); // Free addresses tree was updated
+        assert_eq!(vmm.allocated_amount, PAGE_SIZE);
         assert_vmm_trees_are_equivalent(&vmm.free_addresses, &vmm.free_regions);
     }
 
@@ -198,6 +197,7 @@ mod tests {
         // THEN
         assert!(alloc.is_ok()); // Allocated memory correctly
         assert_eq!(*vmm.free_addresses.values().next().expect("no free regions left"), expected_region_size); // Free addresses tree was updated
+        assert_eq!(vmm.allocated_amount, 5*PAGE_SIZE);
         assert_vmm_trees_are_equivalent(&vmm.free_addresses, &vmm.free_regions);
     }
 
@@ -236,6 +236,7 @@ mod tests {
 
         // THEN
         assert!(dealloc.is_ok());
+        assert_eq!(vmm.allocated_amount, PAGE_SIZE);
         assert_vmm_trees_are_equivalent(&vmm.free_addresses, &vmm.free_regions);
         assert_address_trees_are_equal(&expected_addresses_tree, &vmm.free_addresses);
         assert_region_trees_are_equal(&expected_regions_tree, &vmm.free_regions);
@@ -254,6 +255,7 @@ mod tests {
 
         // THEN
         assert!(dealloc.is_ok()); // Freed memory correctly
+        assert_eq!(vmm.allocated_amount, 0);
         assert_vmm_trees_are_equivalent(&vmm.free_addresses, &vmm.free_regions);
         assert_region_trees_are_equal(&expected_region_tree, &vmm.free_regions);
         assert_address_trees_are_equal(&expected_addresses_tree, &vmm.free_addresses);
@@ -283,6 +285,7 @@ mod tests {
         // THEN
         assert!(dealloc1.is_ok());
         assert!(dealloc2.is_ok());
+        assert_eq!(vmm.allocated_amount, PAGE_SIZE);
         assert_vmm_trees_are_equivalent(&vmm.free_addresses, &vmm.free_regions);
         assert_address_trees_are_equal(&expected_addresses_tree, &vmm.free_addresses);
         assert_region_trees_are_equal(&expected_regions_tree, &vmm.free_regions);

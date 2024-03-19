@@ -1,11 +1,9 @@
 use alloc::string::String;
 use conquer_once::spin::OnceCell;
-use spin::Mutex;
 use crate::debugger::{run_command, run_debug_shell};
 use crate::drivers::ps2::{DATA_PORT, PS2Device, PS2DeviceType, PS2Port};
 use crate::drivers::ps2::PS2DeviceType::MF2Keyboard;
 use crate::graphics::framebuffer_device;
-use crate::graphics::framebuffer_device::Writer;
 
 #[repr(u8)]
 enum Command {

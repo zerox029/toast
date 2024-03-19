@@ -1,8 +1,7 @@
 use core::alloc::{GlobalAlloc, Layout};
 use core::{mem, ptr};
 use core::ptr::NonNull;
-use crate::memory::{MemoryManager, PAGE_SIZE, VirtualAddress};
-use crate::memory::virtual_memory::paging::entry::EntryFlags;
+use crate::memory::VirtualAddress;
 use super::Locked;
 
 const BLOCK_SIZES: &[usize] = &[8, 16, 32, 64, 128, 256, 512, 1024, 2048];
@@ -31,27 +30,10 @@ impl SlabAllocator {
         self.fallback_allocator.init(heap_start, heap_size);
     }
 
-    unsafe fn extend_heap(&mut self) {
-        self.fallback_allocator.extend(2*PAGE_SIZE);
-    }
-
     fn fallback_alloc(&mut self, layout: Layout) -> *mut u8 {
-        if let Ok(ptr) = self.fallback_allocator.allocate_first_fit(layout) {
-            return ptr.as_ptr();
-        }
-
-        // Extend the heap if the allocation failed and try again
-        MemoryManager::vmm_alloc(2 * PAGE_SIZE, EntryFlags::WRITABLE);
-
-        unsafe { self.extend_heap(); }
-
         match self.fallback_allocator.allocate_first_fit(layout) {
-            Ok(ptr) => {
-                ptr.as_ptr()
-            },
-            Err(_) => {
-                ptr::null_mut()
-            }
+            Ok(ptr) => ptr.as_ptr(),
+            Err(_) => ptr::null_mut(),
         }
     }
 }
@@ -75,15 +57,11 @@ unsafe impl GlobalAlloc for Locked<SlabAllocator> {
                         let block_align = block_size;
                         let layout = Layout::from_size_align(block_size, block_align).unwrap();
 
-                        let alloc = allocator.fallback_alloc(layout);
-                        alloc
+                        allocator.fallback_alloc(layout)
                     }
                 }
             }
-            None => {
-                let alloc = allocator.fallback_alloc(layout);
-                alloc
-            }
+            None => allocator.fallback_alloc(layout)
         }
     }
 

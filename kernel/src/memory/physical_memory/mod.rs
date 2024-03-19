@@ -2,6 +2,7 @@ use crate::memory::{PAGE_SIZE, PhysicalAddress};
 
 pub mod linear_frame_allocator;
 pub mod buddy_allocator;
+pub mod buddy_allocator_bitmap;
 
 #[derive(Debug, PartialEq, Eq, PartialOrd, Ord, Copy, Clone)]
 pub struct Frame {

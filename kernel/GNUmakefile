@@ -12,7 +12,7 @@ all:
 
 test:
 	cargo test --target $(RUST_TARGET) --no-run --target-dir target/tests
-	@cp target/tests/$(RUST_TARGET)/debug/deps/$$(cd target/tests/$(RUST_TARGET)/debug/deps && find toast* -maxdepth 1 -perm -111 -type f) kernel
+	@cp target/tests/$(RUST_TARGET)/debug/deps/$$(cd target/tests/$(RUST_TARGET)/debug/deps && find toast* -maxdepth 1 -perm -111 -type f) ./kernel
 
 # Remove object files and the final executable.
 .PHONY: clean

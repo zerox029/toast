@@ -5,6 +5,7 @@ use x86_64::instructions::tables::sgdt;
 use crate::arch::x86_64::registers::{cr0, cr2, cr3, cr4};
 use crate::graphics::framebuffer_device::Writer;
 use crate::memory::{MemoryManager, PAGE_SIZE};
+use crate::memory::virtual_memory::heap_allocator::ALLOCATOR;
 use crate::MEMORY_MAP_REQUEST;
 
 pub fn run_debug_shell() {
@@ -40,7 +41,12 @@ pub fn mem_info(args: &[&str]) {
         "physical" => {
             MemoryManager::instance().lock().frame_allocator.display_memory();
             print!(">");
-        },
+        },/*
+        "heap" => {
+            let heap_bounds = ALLOCATOR.lock().heap_bounds();
+            println!("heap from 0x{:X} to 0x{:X}", heap_bounds.0, heap_bounds.1);
+            print!(">")
+        },*/
         "map" => {
             print_memory_map();
             print!(">");
@@ -59,6 +65,7 @@ pub fn cpu_info(args: &[&str]) {
 
             let gdt = sgdt().base;
             println!("GDT={:X}", gdt);
+            print!(">");
         }
         _ => {
             println!("unrecognized argument \"{}\"", args[0]);

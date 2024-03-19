@@ -14,6 +14,7 @@
 #![feature(extract_if)]
 #![feature(btree_extract_if)]
 #![feature(custom_test_frameworks)]
+#![feature(int_roundings)]
 #![test_runner(crate::test_runner)]
 #![reexport_test_harness_main = "test_main"]
 
@@ -43,6 +44,7 @@ use task::executor::Executor;
 use task::Task;
 use utils::hcf;
 use crate::drivers::cpuid::CPUInfo;
+use crate::graphics::writer::FramebufferWriter;
 
 #[cfg(test)]
 use crate::utils::tests::{exit_qemu, QemuExitCode, Testable};
@@ -93,6 +95,8 @@ unsafe fn init() {
     FRAMEBUFFER_REQUEST.get_response().expect("could not retrieve the frame buffer").framebuffers().for_each(|fbdev| {
         FrameBufferDevice::init(&fbdev, String::from("fb0"));
     });
+    //FramebufferWriter::init().expect("could not initialize the framebuffer");
+
     Writer::init().expect("could not initialize the framebuffer");
 
     Vfs::init();
@@ -132,9 +136,10 @@ unsafe fn init() {
         }
     }
 
+    /*
     print!(">");
 
-    executor.run();
+    executor.run();*/
 }
 
 #[cfg(not(test))]
