@@ -28,10 +28,6 @@ impl<A> Locked<A> {
     }
 }
 
-fn align_up(addr: VirtualAddress, align: usize) -> VirtualAddress {
-    (addr + align - 1) & !(align - 1)
-}
-
 pub fn init_heap<A>(frame_allocator: &mut A, page_table: &mut ActivePageTable) where A: FrameAllocator {
     serial_println!("mm: initializing the heap...");
 

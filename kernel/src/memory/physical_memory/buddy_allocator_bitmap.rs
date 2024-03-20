@@ -1,4 +1,9 @@
+use core::mem::size_of;
 use core::ptr;
+use limine::memory_map;
+use limine::memory_map::EntryType;
+use linked_list_allocator::align_up;
+use crate::HHDM_OFFSET;
 use crate::memory::{PAGE_SIZE, PhysicalAddress};
 
 /// Maximum allocation size, this allocator cannot allocate blocks larger than 2^MAX_ORDER pages
@@ -38,7 +43,7 @@ impl MemoryRegion {
                 }
 
                 // Find address
-                let bitmap_address = unsafe { Self::order_bitmap_address(memory_maps_start, frame_count, i) };
+                let bitmap_address = Self::order_bitmap_address(memory_maps_start, frame_count, i);
 
                 let address = bitmap_address;
                 bitmaps[i] = Some(address);
@@ -65,22 +70,62 @@ impl MemoryRegion {
         frame_count.div_ceil(8).div_floor(2usize.pow(order as u32))
     }
 
-    unsafe fn order_bitmap_address(base_address: *mut u8, frame_count: usize, order: usize) -> *mut u8 {
+    fn order_bitmap_address(base_address: *mut u8, frame_count: usize, order: usize) -> *mut u8 {
         let offset = (0..order).map(|order| Self::order_bitmap_size(frame_count, order)).sum();
 
-        base_address.add(offset)
+        unsafe { base_address.add(offset) }
     }
 }
 
 pub struct BuddyAllocator {
-    current_region: *mut MemoryRegion,
-    buffer_start: *mut u8,
+    first_region: &'static MemoryRegion,
+}
+
+impl BuddyAllocator {
+    pub unsafe fn init(memory_regions: &[&memory_map::Entry]) -> Result<Self, &'static str> {
+        let mut buffer_size = 0usize;
+        for entry in memory_regions.iter().filter(|entry| entry.entry_type == EntryType::USABLE) {
+            let frame_count = entry.length.div_ceil(PAGE_SIZE as u64);
+            buffer_size += size_of::<MemoryRegion>() * 2 + frame_count.div_ceil(8) as usize;
+        }
+
+        // Find an available region large enough to accommodate everything
+        let containing_entry = memory_regions
+            .iter()
+            .find(|entry| entry.entry_type == EntryType::USABLE && entry.length >= buffer_size as u64)
+            .ok_or("pmm: could not find a suitable memory region to hold the pmm")?;
+        let buffer_start = align_up((containing_entry.base as usize + *HHDM_OFFSET), PAGE_SIZE);
+        //let bitmap_size = align_down(containing_entry.base as usize, PAGE_SIZE);
+
+        let mut current_buffer_start = buffer_start;
+        let mut previous_region: Option<&mut MemoryRegion> = None;
+        for entry in memory_regions.iter().filter(|entry| entry.entry_type == EntryType::USABLE) {
+            serial_println!("pmm: [0x{:X} -> 0x{:X}] - length 0x{:X} bytes", entry.base, entry.base + entry.length, entry.length);
+
+            let bitmap_start_address = current_buffer_start + size_of::<MemoryRegion>();
+            let region = MemoryRegion::new(entry.base as PhysicalAddress, entry.length as usize, bitmap_start_address as *mut u8);
+            ptr::write(current_buffer_start as *mut MemoryRegion, region);
+
+            let current_region = current_buffer_start as *mut MemoryRegion;
+
+            if let Some(previous_region) = previous_region {
+                previous_region.next_region = Some(unsafe { &*current_region });
+            }
+            previous_region = Some(unsafe { &mut * current_region });
+
+            current_buffer_start += size_of::<MemoryRegion>() + unsafe { &mut * current_region }.bitmap_size;
+        }
+
+        Ok(Self {
+            first_region: unsafe { &*(buffer_start as *const MemoryRegion) },
+        })
+    }
 }
 
 #[cfg(test)]
 mod tests {
     use limine::memory_map::EntryType;
-    use crate::memory::physical_memory::buddy_allocator_bitmap::MemoryRegion;
+    use crate::memory::physical_memory::buddy_allocator_bitmap::{BuddyAllocator, MemoryRegion};
     use crate::memory::PhysicalAddress;
     use crate::{HHDM_OFFSET, MEMORY_MAP_REQUEST};
 
@@ -194,6 +239,23 @@ mod tests {
         assert!(region.next_region.is_none());
 
         assert!((0..expected_bitmap_size).all(|i| unsafe { *region.bitmap_start.add(i) } == 0));
+    }
+
+    #[test_case]
+    fn buddy_allocator_init() {
+        let buddy_allocator = unsafe {
+            BuddyAllocator::init(MEMORY_MAP_REQUEST
+                .get_response()
+                .expect("could not retrieve the memory map")
+                .entries())
+                .unwrap()
+        };
+
+        let mut current_region = Some(buddy_allocator.first_region);
+        while let Some(curr) = current_region {
+            serial_println!("Found region of size 0x{:X} at 0x{:p} with bitmap starting at 0x{:?}", curr.region_size, curr, curr.bitmap_start);
+            current_region = curr.next_region;
+        }
     }
 
     fn first_free_region(expected_bitmap_size: u64) -> *mut u8 {
