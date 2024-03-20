@@ -1,7 +1,4 @@
-use alloc::collections::LinkedList;
 use core::ptr;
-use limine::memory_map;
-use rlibc::memset;
 use crate::memory::{PAGE_SIZE, PhysicalAddress};
 
 /// Maximum allocation size, this allocator cannot allocate blocks larger than 2^MAX_ORDER pages
@@ -9,16 +6,18 @@ const MAX_ORDER: usize = 10;
 
 pub struct MemoryRegion {
     /// The physical address of the start of the region
-    start_address: PhysicalAddress,
+    region_start_address: PhysicalAddress,
     /// The size in bytes of the region
-    size: usize,
+    region_size: usize,
+    /// The total number of frames contained in the region
+    region_frame_count: usize,
 
     /// The total size in bytes of all the buddy bitmaps representing the region.
     bitmap_size: usize,
-    /// The total number of frames contained in the region
-    frame_count: usize,
+    /// The physical address of the start of the bitmap, this is largely equivalent to `memory_maps.as_ptr()`
+    bitmap_start: *mut u8,
     /// An array of pointers to the start of each buddy bitmap
-    memory_maps: [Option<*mut u8>; MAX_ORDER + 1],
+    bitmaps: [Option<*mut u8>; MAX_ORDER + 1],
 
     /// A pointer to the next memory region
     next_region: Option<&'static MemoryRegion>,
@@ -29,8 +28,8 @@ impl MemoryRegion {
 
         let bitmap_size = (0..=MAX_ORDER).map(|order| Self::order_bitmap_size(frame_count, order)).sum();
 
-        let memory_maps = {
-            let mut memory_maps: [Option<*mut u8>; MAX_ORDER + 1] = [None; 11];
+        let bitmaps = {
+            let mut bitmaps: [Option<*mut u8>; MAX_ORDER + 1] = [None; 11];
 
             for i in 0..=MAX_ORDER {
                 let bitmap_size = Self::order_bitmap_size(frame_count, i);
@@ -42,22 +41,22 @@ impl MemoryRegion {
                 let bitmap_address = unsafe { Self::order_bitmap_address(memory_maps_start, frame_count, i) };
 
                 let address = bitmap_address;
-                memory_maps[i] = Some(address);
+                bitmaps[i] = Some(address);
 
                 // Set all bits to 0
-                #[cfg(not(test))]
                 unsafe { ptr::write_bytes(address, 0, Self::order_bitmap_size(frame_count, i)); }
             }
 
-            memory_maps
+            bitmaps
         };
 
         Self {
-            start_address,
-            size,
+            region_start_address: start_address,
+            region_size: size,
+            bitmap_start: memory_maps_start,
             bitmap_size,
-            frame_count,
-            memory_maps,
+            region_frame_count: frame_count,
+            bitmaps,
             next_region: None,
         }
     }
@@ -80,7 +79,10 @@ pub struct BuddyAllocator {
 
 #[cfg(test)]
 mod tests {
+    use limine::memory_map::EntryType;
     use crate::memory::physical_memory::buddy_allocator_bitmap::MemoryRegion;
+    use crate::memory::PhysicalAddress;
+    use crate::{HHDM_OFFSET, MEMORY_MAP_REQUEST};
 
     #[test_case]
     fn order_bitmap_size_order_zero() {
@@ -112,62 +114,97 @@ mod tests {
 
     #[test_case]
     fn new_memory_region_full() {
-        let region = MemoryRegion::new(0, 0x2000000, 0 as *mut u8);
-
+        // GIVEN
         /// 0x2000000 bytes => 0x2000 frames
         /// Bitmap size: 0x400, 0x200, 0x100, 0x80, 0x40, 0x20, 0x10, 0x8, 0x4, 0x2, 0x1
         /// Total bitmaps size: 0x3FF
+        let region_start: PhysicalAddress = *HHDM_OFFSET;
+        let region_size = 0x2000000;
 
-        let expected_memory_maps = [
-            Some(0 as *mut u8),
-            Some(0x400 as *mut u8),
-            Some(0x600 as *mut u8),
-            Some(0x700 as *mut u8),
-            Some(0x780 as *mut u8),
-            Some(0x7C0 as *mut u8),
-            Some(0x7E0 as *mut u8),
-            Some(0x7F0 as *mut u8),
-            Some(0x7F8 as *mut u8),
-            Some(0x7FC as *mut u8),
-            Some(0x7FE as *mut u8),
-        ];
+        let expected_bitmap_size = 0x7FFusize;
+        let expected_frame_count = 0x2000;
 
-        assert_eq!(region.start_address, 0);
-        assert_eq!(region.size, 0x2000000);
-        assert_eq!(region.bitmap_size, 0x7FF);
-        assert_eq!(region.frame_count, 0x2000);
-        assert_eq!(region.memory_maps, expected_memory_maps);
+        let bitmap_start_address = first_free_region(expected_bitmap_size as u64);
+
+        let expected_memory_maps = unsafe { [
+            Some(bitmap_start_address),
+            Some(bitmap_start_address.add(0x400)),
+            Some(bitmap_start_address.add(0x600)),
+            Some(bitmap_start_address.add(0x700)),
+            Some(bitmap_start_address.add(0x780)),
+            Some(bitmap_start_address.add(0x7C0)),
+            Some(bitmap_start_address.add(0x7E0)),
+            Some(bitmap_start_address.add(0x7F0)),
+            Some(bitmap_start_address.add(0x7F8)),
+            Some(bitmap_start_address.add(0x7FC)),
+            Some(bitmap_start_address.add(0x7FE)),
+        ] };
+
+        // WHEN
+        let region = MemoryRegion::new(region_start, region_size, bitmap_start_address);
+
+        // THEN
+        assert_eq!(region.region_start_address, region_start);
+        assert_eq!(region.region_size, region_size);
+        assert_eq!(region.bitmap_size, expected_bitmap_size);
+        assert_eq!(region.region_frame_count, expected_frame_count);
+        assert_eq!(region.bitmaps, expected_memory_maps);
         assert!(region.next_region.is_none());
+
+        assert!((0..expected_bitmap_size).all(|i| unsafe { *region.bitmap_start.add(i) } == 0));
     }
 
     #[test_case]
     fn new_memory_region_not_full() {
-        let region = MemoryRegion::new(0, 0x400000, 0 as *mut u8);
-
+        // GIVEN
         /// 0x400000 bytes => 0x400 frames
         /// Bitmap size: 0x80, 0x40, 0x20, 0x10, 0x8, 0x4, 0x2, 0x1
         /// Total bitmaps size: 0x3FF
+        let region_start: PhysicalAddress = *HHDM_OFFSET;
+        let region_size = 0x400000;
 
-        let expected_memory_maps = [
-            Some(0 as *mut u8),
-            Some(0x80 as *mut u8),
-            Some(0xC0 as *mut u8),
-            Some(0xE0 as *mut u8),
-            Some(0xF0 as *mut u8),
-            Some(0xF8 as *mut u8),
-            Some(0xFC as *mut u8),
-            Some(0xFE as *mut u8),
+        let expected_bitmap_size = 0xFFusize;
+        let expected_frame_count = 0x400;
+
+        let bitmap_start_address = first_free_region(expected_bitmap_size as u64);
+
+        let expected_memory_maps = unsafe { [
+            Some(bitmap_start_address),
+            Some(bitmap_start_address.add(0x80)),
+            Some(bitmap_start_address.add(0xC0)),
+            Some(bitmap_start_address.add(0xE0)),
+            Some(bitmap_start_address.add(0xF0)),
+            Some(bitmap_start_address.add(0xF8)),
+            Some(bitmap_start_address.add(0xFC)),
+            Some(bitmap_start_address.add(0xFE)),
             None,
             None,
             None,
-        ];
+        ] };
 
-        assert_eq!(region.start_address, 0);
-        assert_eq!(region.size, 0x400000);
-        assert_eq!(region.bitmap_size, 0xFF);
-        assert_eq!(region.frame_count, 0x400);
-        assert_eq!(region.memory_maps, expected_memory_maps);
+        // WHEN
+        let region = MemoryRegion::new(region_start, region_size, bitmap_start_address);
 
+        // THEN
+        assert_eq!(region.region_start_address, region_start);
+        assert_eq!(region.region_size, region_size);
+        assert_eq!(region.bitmap_size, expected_bitmap_size);
+        assert_eq!(region.region_frame_count, expected_frame_count);
+        assert_eq!(region.bitmaps, expected_memory_maps);
         assert!(region.next_region.is_none());
+
+        assert!((0..expected_bitmap_size).all(|i| unsafe { *region.bitmap_start.add(i) } == 0));
+    }
+
+    fn first_free_region(expected_bitmap_size: u64) -> *mut u8 {
+        unsafe { (MEMORY_MAP_REQUEST
+                .get_response()
+                .expect("could not retrieve the memory map")
+                .entries()
+                .iter()
+                .find(|region| region.entry_type == EntryType::USABLE && region.length >= expected_bitmap_size)
+                .expect("could not find a free region")
+                .base as *mut u8)
+                .add(*HHDM_OFFSET) }
     }
 }
