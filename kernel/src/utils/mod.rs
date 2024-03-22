@@ -5,6 +5,7 @@ use crate::MEMORY_MAP_REQUEST;
 
 pub mod bitutils;
 pub mod tests;
+pub mod bitmap_btree;
 
 pub fn align_up(addr: usize, align: usize) -> usize {
     (addr + align - 1) & !(align - 1)

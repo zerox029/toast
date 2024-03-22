@@ -1,10 +1,11 @@
 use core::mem::size_of;
+use core::ops::Index;
 use core::ptr;
 use core::slice::from_raw_parts;
 use limine::memory_map;
 use limine::memory_map::EntryType;
 use linked_list_allocator::align_up;
-use crate::{HHDM_OFFSET, set_bit};
+use crate::{HHDM_OFFSET, set_bit, test_bit};
 use crate::memory::{PAGE_SIZE, PhysicalAddress, VirtualAddress};
 use crate::memory::physical_memory::{Frame, FrameAllocator};
 
@@ -86,10 +87,11 @@ impl MemoryRegion {
             Some(bitmap) => {
                 let bitmap_size = Self::order_bitmap_size(self.region_frame_count, order);
                 unsafe {
-                    let mut bit_offset = 0;
+                    let mut bit_offset = 0; // The offset of the bit within the region bitmap
                     for (byte_index, byte) in from_raw_parts(bitmap, bitmap_size).iter().enumerate() {
                         let first_free_block_index = (!(*byte).reverse_bits()).trailing_zeros();
 
+                        // Check if a free block was found in the current byte
                         if first_free_block_index < 8 {
                             set_bit!(byte, first_free_block_index);
                             bit_offset = byte_index * 8 + first_free_block_index as usize;
@@ -97,20 +99,58 @@ impl MemoryRegion {
                         }
                     }
 
-                    return Some(self.region_start_address + bit_offset * PAGE_SIZE)
+                    // TODO: Return None if no free block was found
+
+                    let block_address = self.region_start_address + bit_offset * 2usize.pow(order as u32) * PAGE_SIZE;
+
+                    Some(block_address)
                 }
             }
         }
     }
 
     fn allocate_block_at(&self, order: usize, address: PhysicalAddress) -> Option<VirtualAddress> {
+        if address < self.region_start_address || address >= self.region_start_address + self.region_size {
+            return None;
+        }
+
         return match self.bitmaps[order] {
             None => None,
             Some(bitmap) => {
-                let bitmap_size = Self::order_bitmap_size(self.region_frame_count, order);
-                let bit_offset = (address - self.region_start_address) / PAGE_SIZE;
+                let block_size = 2usize.pow(order as u32);
 
+                let bit_index = address / block_size;
+                let byte_index = bit_index / 8;
+                let bit_offset = bit_index % 8;
+
+                let containing_byte = unsafe { bitmap.add(byte_index) };
+                if !test_bit!(containing_byte, bit_offset) {
+                    set_bit!(containing_byte, bit_offset);
+                    return Some(address + *HHDM_OFFSET);
+                }
+
+                None
             }
+        }
+    }
+}
+
+struct MemoryRegionIter {
+    current: &'static MemoryRegion,
+}
+
+impl Iterator for MemoryRegionIter {
+    type Item = &'static MemoryRegion;
+
+    fn next(&mut self) -> Option<Self::Item> {
+        return if let Some(next_region) = self.current.next_region {
+            let region = self.current;
+            self.current = next_region;
+
+
+            Some(region)
+        } else {
+            None
         }
     }
 }
@@ -167,82 +207,6 @@ impl BuddyAllocator {
         }
     }
 
-    /// Allocates 2^order contiguous frames
-    /// Returns the starting address of the allocated block
-    pub fn allocate_frames(&mut self, order: usize) -> Result<PhysicalAddress, &'static str> {
-        if order > MAX_ORDER {
-            return Err("cannot allocate more than 10 contiguous frames")
-        }
-
-        let first_free_block_address = self.allocate_first_free_block(order);
-        if first_free_block_address.is_some() {
-            let block = first_free_block_address.unwrap();
-
-            self.allocated_amount += 2usize.pow(order as u32) * PAGE_SIZE;
-            Ok(block)
-        } else {
-            let alloc = self.split_block(order + 1);
-
-            if alloc.is_ok() {
-                self.allocated_amount += 2usize.pow(order as u32) * PAGE_SIZE;
-            }
-
-            alloc
-        }
-    }
-
-    /// Split a 2^order sized block into two 2^order-1 sized blocks, and sets the first one as allocated and returns it.
-    /// The created blocks are added to the free_areas array at index order-1 and the original block is marked as allocated.
-    fn split_block(&mut self, order: usize) -> Result<PhysicalAddress, &'static str> {
-        if order == 0 {
-            return Err("cannot split block further");
-        }
-
-        // Find the first, smallest unallocated block that fits
-        let mut first_free_block: Option<VirtualAddress> = None;
-        let mut current_order = order;
-        while first_free_block.is_none() && current_order <= MAX_ORDER {
-            first_free_block = self.allocate_first_free_block(current_order);
-            current_order += 1;
-        }
-
-        match first_free_block {
-            Some(current_block) => {
-                // Repeatedly split until we get to the desired size
-                let current_order = order;
-                while current_order >= order {
-                    let buddy_size_class = current_order - 1;
-
-                    let left_buddy = crate::memory::physical_memory::buddy_allocator::MemoryBlock {
-                        is_allocated: true,
-                        starting_address: current_block_clone.starting_address,
-                        size_class: buddy_size_class,
-                        block_type: crate::memory::physical_memory::buddy_allocator::BlockType::LeftBuddy
-                    };
-
-                    let right_buddy = crate::memory::physical_memory::buddy_allocator::MemoryBlock {
-                        is_allocated: false,
-                        starting_address: current_block_clone.starting_address + PAGE_SIZE * 2usize.pow(buddy_size_class as u32),
-                        size_class: buddy_size_class,
-                        block_type: crate::memory::physical_memory::buddy_allocator::BlockType::RightBuddy
-                    };
-
-                    self.allocate_first_free_block()
-
-                    // Add the two buddies to the linked list
-                    self.memory_blocks[buddy_size_class].push_back(left_buddy);
-                    self.memory_blocks[buddy_size_class].push_back(right_buddy);
-
-                    // Return only the (allocated) left buddy
-                    current_block_clone = left_buddy
-                }
-
-                Ok(current_block_clone.starting_address)
-            },
-            None => Err("encountered an error while splitting block")
-        }
-    }
-
     /// Allocates the first free block of the requested order found in the bitmaps linked list
     /// and returns its address wrapped in an option.
     fn allocate_first_free_block(&self, order: usize) -> Option<VirtualAddress>  {
@@ -251,7 +215,7 @@ impl BuddyAllocator {
 
     /// Allocates a free block of the given size at the requested address. Fails if no free block was found
     fn allocate_block_at(&self, order: usize, address: PhysicalAddress) -> Result<VirtualAddress, &'static str> {
-        self.to_iter().find_map(|region| region.allocate_block_at(order, address));
+        self.to_iter().find_map(|region| region.allocate_block_at(order, address)).ok_or("pmm: could not allocate memory")
     }
 }
 
@@ -269,25 +233,6 @@ impl FrameAllocator for BuddyAllocator {
     }
 }
 
-struct MemoryRegionIter {
-    current: &'static MemoryRegion,
-}
-
-impl Iterator for MemoryRegionIter {
-    type Item = &'static MemoryRegion;
-
-    fn next(&mut self) -> Option<Self::Item> {
-        return if let Some(next_region) = self.current.next_region {
-            let region = self.current;
-            self.current = next_region;
-
-
-            Some(region)
-        } else {
-            None
-        }
-    }
-}
 
 #[cfg(test)]
 mod tests {
