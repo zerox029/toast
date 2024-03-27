@@ -4,7 +4,8 @@ use limine::memory_map;
 use limine::memory_map::EntryType;
 use linked_list_allocator::align_up;
 use crate::HHDM_OFFSET;
-use crate::memory::{PAGE_SIZE, PhysicalAddress};
+use crate::memory::{PAGE_SIZE, PhysicalAddress, VirtualAddress};
+use crate::memory::physical_memory::{Frame, FrameAllocator};
 use crate::utils::bitmap_btree::BitmapBinaryTree;
 
 const MAX_ORDER: usize = 10;
@@ -78,5 +79,27 @@ impl BuddyAllocator {
             first_region: &*(buffer_start as *const MemoryRegion),
             allocated_amount: 0,
         })
+    }
+
+    pub fn allocate_frames(&self, order: usize) -> Result<PhysicalAddress, &'static str> {
+        if order > MAX_ORDER {
+            return Err("pmm: cannot allocate more than 2^10 contiguous frames");
+        }
+
+        // Find the first free block
+
+
+
+        Ok(0)
+    }
+}
+
+impl FrameAllocator for BuddyAllocator {
+    fn allocate_frame(&mut self) -> Result<Frame, &'static str> {
+        todo!()
+    }
+
+    fn deallocate_frame(&mut self, frame: Frame) -> Result<(), &'static str> {
+        todo!()
     }
 }
