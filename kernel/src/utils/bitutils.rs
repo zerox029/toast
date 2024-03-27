@@ -19,15 +19,15 @@ macro_rules! set_bit {
 
 #[macro_export]
 macro_rules! unset_bit {
-    ($num:expr, $n:expr) => {
+    ($num:expr, $n:expr) => {{
         let mask = !(! << $n);
         $num & mask
-    };
+    }};
 }
 
 #[macro_export]
 macro_rules! set_bit_to {
-    ($num:expr, $n:expr, $bit:expr) => {
-        ($num & !(1 << $n)) | (($bit as usize) << $n)
-    };
+    ($num:expr, $n:expr, $bit:expr) => {{
+        let _ = (($num & !(1 << $n)) | (($bit as u8) << $n));
+    }};
 }

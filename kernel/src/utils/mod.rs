@@ -1,8 +1,4 @@
 use core::arch::asm;
-use limine::memory_map::EntryType;
-use crate::memory::VirtualAddress;
-use crate::MEMORY_MAP_REQUEST;
-
 pub mod bitutils;
 pub mod tests;
 pub mod bitmap_btree;

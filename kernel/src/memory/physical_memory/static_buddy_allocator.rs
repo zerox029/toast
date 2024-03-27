@@ -1,10 +1,10 @@
-use core::intrinsics::size_of;
+use core::mem::size_of;
 use core::ptr;
 use limine::memory_map;
 use limine::memory_map::EntryType;
 use linked_list_allocator::align_up;
 use crate::HHDM_OFFSET;
-use crate::memory::{PAGE_SIZE, PhysicalAddress, VirtualAddress};
+use crate::memory::{PAGE_SIZE, PhysicalAddress};
 use crate::memory::physical_memory::{Frame, FrameAllocator};
 use crate::utils::bitmap_btree::BitmapBinaryTree;
 
@@ -45,7 +45,7 @@ pub struct BuddyAllocator {
 impl BuddyAllocator {
     pub unsafe fn init(memory_regions: &[&memory_map::Entry]) -> Result<Self, &'static str> {
         // Calculate how much memory will be necessary to accommodate the allocator
-        let mut buffer_size = memory_regions
+        let buffer_size = memory_regions
             .iter()
             .filter(|entry| entry.entry_type == EntryType::USABLE)
             .fold(0, |acc, entry|
@@ -56,7 +56,7 @@ impl BuddyAllocator {
             .iter()
             .find(|entry| entry.entry_type == EntryType::USABLE && entry.length >= buffer_size as u64)
             .ok_or("pmm: could not find a suitable memory region to hold the pmm")?;
-        let buffer_start = align_up((containing_entry.base as usize + *HHDM_OFFSET), PAGE_SIZE);
+        let buffer_start = align_up(containing_entry.base as usize + *HHDM_OFFSET, PAGE_SIZE);
 
         let mut current_buffer_start = buffer_start;
         let mut previous_region: Option<&mut MemoryRegion> = None;
@@ -72,7 +72,7 @@ impl BuddyAllocator {
             }
             previous_region = Some(&mut *current_region);
 
-            current_buffer_start += size_of::<MemoryRegion>() + (&mut *current_region).memory_blocks.get_full_size()
+            current_buffer_start += size_of::<MemoryRegion>() + (&mut *current_region).memory_blocks.len()
         }
 
         Ok(Self {
@@ -99,7 +99,7 @@ impl FrameAllocator for BuddyAllocator {
         todo!()
     }
 
-    fn deallocate_frame(&mut self, frame: Frame) -> Result<(), &'static str> {
+    fn deallocate_frame(&mut self, _frame: Frame) -> Result<(), &'static str> {
         todo!()
     }
 }

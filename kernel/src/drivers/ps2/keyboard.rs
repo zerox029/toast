@@ -1,5 +1,4 @@
 use alloc::string::String;
-use conquer_once::spin::OnceCell;
 use crate::debugger::{run_command, run_debug_shell};
 use crate::drivers::ps2::{DATA_PORT, PS2Device, PS2DeviceType, PS2Port};
 use crate::drivers::ps2::PS2DeviceType::MF2Keyboard;
@@ -106,7 +105,7 @@ impl PS2Keyboard {
             0x54..=0x56 | 0x59..=0x80 => (), // Not mapped, maybe want to ask to resend last byte?
             0x01 => (), // Escape pressed,
             0x1C => {
-                if(self.is_debug) {
+                if self.is_debug {
                     print!("\n");
                     run_command(&self.current_line);
                     self.current_line = String::from("");

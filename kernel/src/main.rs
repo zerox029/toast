@@ -21,9 +21,7 @@
 extern crate downcast_rs;
 extern crate alloc;
 
-use alloc::boxed::Box;
 use alloc::string::String;
-use core::any::Any;
 use core::panic::PanicInfo;
 use lazy_static::lazy_static;
 use limine::BaseRevision;
@@ -44,7 +42,6 @@ use task::executor::Executor;
 use task::Task;
 use utils::hcf;
 use crate::drivers::cpuid::CPUInfo;
-use crate::graphics::writer::FramebufferWriter;
 
 #[cfg(test)]
 use crate::utils::tests::{exit_qemu, QemuExitCode, Testable};

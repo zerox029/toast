@@ -5,7 +5,6 @@ use x86_64::instructions::tables::sgdt;
 use crate::arch::x86_64::registers::{cr0, cr2, cr3, cr4};
 use crate::graphics::framebuffer_device::Writer;
 use crate::memory::{MemoryManager, PAGE_SIZE};
-use crate::memory::virtual_memory::heap_allocator::ALLOCATOR;
 use crate::MEMORY_MAP_REQUEST;
 
 pub fn run_debug_shell() {
@@ -15,7 +14,7 @@ pub fn run_debug_shell() {
 }
 
 pub fn run_command(command: &String) {
-    let mut command_parts: Vec<&str> = command.split(" ").collect();
+    let command_parts: Vec<&str> = command.split(" ").collect();
 
     match command_parts[0] {
         "meminfo" => { mem_info(&command_parts[1..]); },

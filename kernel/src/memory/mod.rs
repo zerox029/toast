@@ -63,7 +63,7 @@ impl MemoryManager {
     /// Returns the total amount of allocated memory in the form of a tuple. The first element
     /// represents the physical memory and the second represents the virtual memory
     pub fn get_allocated_memory_amount() -> (usize, usize) {
-        let mut memory_manager = MemoryManager::instance().lock();
+        let memory_manager = MemoryManager::instance().lock();
 
         (memory_manager.frame_allocator.get_allocated_amount(), memory_manager.virtual_memory_manager.get_allocated_amount())
     }

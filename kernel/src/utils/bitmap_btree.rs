@@ -25,7 +25,7 @@ impl BitmapBinaryTree {
 
         let containing_byte = unsafe { self.nodes.add(byte_index) };
 
-        Ok(test_bit!(containing_byte, bit_index))
+        Ok(test_bit!(unsafe { *containing_byte }, bit_index as u8))
     }
 
     /// Set the value of the node at the given index
@@ -37,7 +37,7 @@ impl BitmapBinaryTree {
 
         let containing_byte = unsafe { self.nodes.add(byte_index) };
 
-        Ok(set_bit_to!(containing_byte, bit_index, value))
+        Ok(set_bit_to!(unsafe { *containing_byte }, bit_index, value))
     }
 
     /// Get the indices of the two children nodes of the node at the given index
@@ -56,7 +56,7 @@ impl BitmapBinaryTree {
 
     /// Returns the height of the tree
     pub fn get_height(&self) -> usize {
-        (self.size as f64).log2().ceil() as usize
+        todo!()
     }
 
     /// Returns the number of elements in the tree
